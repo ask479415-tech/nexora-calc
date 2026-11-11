@@ -128,12 +128,12 @@ export default function App() {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.text('Weight calculation bill', 18, 28);
     doc.text('Date: ' + new Date().toLocaleString(), 18, 38);
     let y = 52;
-    entries.forEach((e, i) => { doc.text(String(i + 1), 20, y); doc.text(e.kg + ' kg ' + e.grams + ' g', 42, y); y += 9; });
+    entries.forEach(e => { doc.text(e.kg + ' kg ' + e.grams + ' g', 20, y); y += 9; });
     doc.setFont('helvetica', 'bold'); doc.text('TOTAL: ' + sum.totalKg + ' kg ' + sum.totalGrams + ' g', 18, y + 8);
     doc.save('Nexora-Calc-Bill.pdf');
   }
   function shareWhatsApp() {
-    const lines = entries.map((e, i) => (i + 1) + '. ' + e.kg + ' kg ' + e.grams + ' g').join('\n');
+    const lines = entries.map(e => e.kg + ' kg ' + e.grams + ' g').join('\n');
     const text = 'NEXORA CALC BILL\n' + lines + '\n----------------\nTOTAL: ' + sum.totalKg + ' kg ' + sum.totalGrams + ' g';
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   }
@@ -155,7 +155,7 @@ export default function App() {
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>সংখ্যা যাচাই করুন</h2></div><span className="count">{entries.length} লাইন</span></div>
-      {entries.length === 0 ? <div className="empty-state">এখনও কোনো ওজন যোগ হয়নি</div> : <div className="entry-list">{entries.map((e, i) => <div className="entry-row" key={e.id}><span className="row-number">{String(i + 1).padStart(2, '0')}</span>{editing === e.id ? <input autoFocus defaultValue={e.raw} onBlur={ev => { updateEntry(e.id, ev.target.value); setEditing(null); }} onKeyDown={ev => { if (ev.key === 'Enter') { updateEntry(e.id, ev.currentTarget.value); setEditing(null); } }}/> : <strong>{e.kg} <small>kg</small> {e.grams} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(e.id)} aria-label="Edit"><Pencil size={16}/></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(x => x.id !== e.id))} aria-label="Delete"><Trash2 size={16}/></button></div>)}</div>}
+      {entries.length === 0 ? <div className="empty-state">এখনও কোনো ওজন যোগ হয়নি</div> : <div className="entry-list">{entries.map(e => <div className="entry-row" key={e.id}>{editing === e.id ? <input autoFocus defaultValue={e.raw} onBlur={ev => { updateEntry(e.id, ev.target.value); setEditing(null); }} onKeyDown={ev => { if (ev.key === 'Enter') { updateEntry(e.id, ev.currentTarget.value); setEditing(null); } }}/> : <strong>{e.kg} <small>kg</small> {e.grams} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(e.id)} aria-label="Edit"><Pencil size={16}/></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(x => x.id !== e.id))} aria-label="Delete"><Trash2 size={16}/></button></div>)}</div>}
       <div className="add-row"><input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && addEntry()} placeholder="নতুন ওজন লিখুন, যেমন 44,100"/><button onClick={addEntry} aria-label="Add"><Plus/></button></div>
     </section>
     <section className="total-card"><div className="total-top"><span>মোট ওজন</span><span className="verified"><Check size={14}/> যাচাইয়ের পর</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">মোট {entries.length}টি এন্ট্রি</div></section>
@@ -164,12 +164,12 @@ export default function App() {
     <footer> NEXORA CALC <span>•</span> Simple. Accurate. Yours.</footer>
     {reviewPhoto && <div className="modal-backdrop review-backdrop">
       <div className="review-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><div><h2>ছবি ও ওজন বাছাই</h2><p>যে ওজনগুলো হিসাব করবেন সেগুলোতে টিক দিন</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X/></button></div>
+        <div className="modal-head"><div><h2>ছবি ও ওজন বাছাই</h2><p>ছবির সঙ্গে মিলিয়ে প্রয়োজনীয় ওজনগুলো টিক দিয়ে বেছে নিন</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X/></button></div>
         <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page"/></div>
-        <div className="review-tools"><strong>পড়া ওজন: {pendingEntries.length}টি</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>সব নির্বাচন</button><button type="button" onClick={() => setSelectedIds([])}>সব বাদ</button></div>
+        <div className="review-tools"><strong>ছবি থেকে পাওয়া ওজন: {pendingEntries.length}টি</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>সব নির্বাচন</button><button type="button" onClick={() => setSelectedIds([])}>সব বাদ</button></div>
         {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <label className="review-row" key={item.id}>
           <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={e => setSelectedIds(old => e.target.checked ? [...old,item.id] : old.filter(id => id !== item.id))}/>
-          <span className="review-index">{index+1}</span><b>{item.kg},{String(item.grams).padStart(3,'0')}</b><small>{item.kg} kg {item.grams} g</small>
+          <b>{item.kg},{String(item.grams).padStart(3,'0')}</b><small>{item.kg} kg {item.grams} g</small>
         </label>)}</div> : <div className="empty-state">কোনো ওজন পড়া যায়নি। ছবি দেখে পরে হাতে যোগ করতে পারবেন।</div>}
         <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>বাতিল</button><button className="primary-action" onClick={confirmPhotoSelection}><Check/> OK — নির্বাচিত হিসাব</button></div>
       </div>
