@@ -12,7 +12,8 @@
     "@capacitor/android": "^7.4.3",
     "@capacitor/core": "^7.4.3",
     "jspdf": "^3.0.3",
-    "lucide-react": "^0.468.0"
+    "lucide-react": "^0.468.0",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
