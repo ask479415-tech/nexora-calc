@@ -208,7 +208,7 @@ export default function App() {
   async function pdf() {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const w = doc.internal.pageSize.getWidth(), m = 16, now = new Date(), tableW = w - 2 * m;
-    const billNo = 'NXD-' + String(now.getTime()).slice(-8);
+    const billNo = 'GNX-' + String(now.getTime()).slice(-8);
     doc.setFillColor(18, 42, 72); doc.rect(0, 0, w, 43, 'F');
     doc.setFillColor(35, 101, 162); doc.roundedRect(m, 9, 25, 25, 4, 4, 'F');
     doc.setDrawColor(225, 242, 255); doc.setLineWidth(1.2);
@@ -216,10 +216,11 @@ export default function App() {
     doc.line(m+7,19,m+4,27); doc.line(m+18,19,m+21,27);
     doc.line(m+2,27,m+8,27); doc.line(m+17,27,m+23,27);
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(19);
-    doc.text('NEXORA DIGITAL',m+32,19);
+    doc.setFontSize(8); doc.text('POWERED BY NEXORA DIGITAL',m+32,9);
+    doc.setFontSize(19); doc.text('GLOBAL NEXUS',m+32,20);
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(198,216,235);
-    doc.text('WEIGHT RECORD & BILL',m+32,27);
-    doc.setFontSize(8); doc.text('DIGITAL WEIGHT CALCULATION',m+32,33);
+    doc.text('WEIGHT RECORD & BILL',m+32,28);
+    doc.setFontSize(8); doc.text('GLOBAL NEXUS • WEIGHT BILL',m+32,35);
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
     doc.text('INVOICE',w-m,15,{align:'right'});
     doc.setFont('helvetica','normal'); doc.setFontSize(8);
@@ -257,18 +258,18 @@ export default function App() {
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(18,65,110);
     doc.text('TOTAL AMOUNT: '+money(totalAmount),w-m-2,y,{align:'right'});
     y+=18; doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(18,65,110);
-    doc.text('Nexora',w-m-24,y+3,{align:'center'});
+    doc.text('Global Nexus',w-m-24,y+3,{align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(105,119,135);
     doc.text('Authorised Signature',w-m-24,y+9,{align:'center'});
     doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
-    doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('NEXORA DIGITAL',w/2,291,{align:'center'});
+    doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('GLOBAL NEXUS',w/2,291,{align:'center'});
     try {
-      const saved = await Filesystem.writeFile({ path: 'Nexora-Digital-Weight-Bill.pdf', data: doc.output('datauristring').split(',')[1], directory: Directory.Cache });
-      await Share.share({ title: 'Nexora Digital Weight Bill', text: 'Your weight bill from Nexora Digital.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
+      const saved = await Filesystem.writeFile({ path: 'Global-Nexus-Weight-Bill.pdf', data: doc.output('datauristring').split(',')[1], directory: Directory.Cache });
+      await Share.share({ title: 'Global Nexus Weight Bill', text: 'Your weight bill from Global Nexus. Powered by Nexora Digital.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
       setMessage('PDF created. Choose WhatsApp, Drive or Save to Files from the Android share panel.');
     } catch (error) {
-      try { doc.save('Nexora-Digital-Weight-Bill.pdf'); setMessage('PDF generated. Check your Downloads folder.'); }
+      try { doc.save('Global-Nexus-Weight-Bill.pdf'); setMessage('PDF generated. Check your Downloads folder.'); }
       catch { setMessage('PDF could not be saved: ' + (error instanceof Error ? error.message : 'Please try again.')); }
     }
   }
@@ -278,18 +279,18 @@ export default function App() {
       const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('Could not create bill image.');
       ctx.fillStyle='#f1f5f9';ctx.fillRect(0,0,1080,1450);ctx.fillStyle='#fff';ctx.fillRect(48,48,984,1354);
       ctx.fillStyle='#123b70';ctx.fillRect(48,48,984,250);ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(88,96,132,132,24);ctx.fill();
-      ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#fff';ctx.font='bold 48px Arial';ctx.fillText('NEXORA DIGITAL',252,150);
-      ctx.font='24px Arial';ctx.fillStyle='#c9def2';ctx.fillText('WEIGHT RECORD & BILL',254,197);
+      ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#c9def2';ctx.font='bold 20px Arial';ctx.fillText('POWERED BY NEXORA DIGITAL',252,112);ctx.fillStyle='#fff';ctx.font='bold 48px Arial';ctx.fillText('GLOBAL NEXUS',252,165);
+      ctx.font='24px Arial';ctx.fillStyle='#c9def2';ctx.fillText('WEIGHT RECORD & BILL',254,210);
       ctx.fillStyle='#243b53';ctx.font='bold 30px Arial';ctx.fillText('BILL DETAILS',92,365);ctx.font='22px Arial';ctx.fillStyle='#64748b';ctx.fillText('Date: '+new Date().toLocaleString('en-IN'),92,410);ctx.fillStyle='#243b53';ctx.font='bold 22px Arial';ctx.fillText('Customer: '+(customer.name.trim()||'Walk-in Customer'),92,450);ctx.font='21px Arial';ctx.fillText('Phone: '+(customer.phone.trim()||'—'),92,485);ctx.fillText('Address: '+(customer.address.trim()||'—').slice(0,75),92,520);
       ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,545);ctx.lineTo(988,545);ctx.stroke();
       ctx.fillStyle='#eaf0f6';ctx.fillRect(92,565,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,606);ctx.fillText('WEIGHT',360,606);ctx.textAlign='right';ctx.fillText('GRAMS',950,606);ctx.textAlign='left';
       let y=680;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
       y=Math.max(y+50,1000);ctx.fillStyle='#123b70';ctx.fillRect(92,y,896,190);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.fillText('TOTAL WEIGHT',125,y+48);ctx.fillStyle='#fff';ctx.font='bold 42px Arial';ctx.textAlign='right';ctx.fillText(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',950,y+55);ctx.textAlign='left';ctx.fillStyle='#c9def2';ctx.font='24px Arial';ctx.fillText('Rate per KG: '+money(numericRate),125,y+105);ctx.fillStyle='#fff';ctx.font='bold 36px Arial';ctx.textAlign='right';ctx.fillText('TOTAL: '+money(totalAmount),950,y+158);ctx.textAlign='left';
-      ctx.fillStyle='#123b70';ctx.font='bold 34px Arial';ctx.textAlign='center';ctx.fillText('Nexora',540,1285);ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.fillText('Authorised Signature',540,1320);ctx.fillText('Thank you for choosing Nexora Digital',540,1360);ctx.textAlign='left';
+      ctx.fillStyle='#123b70';ctx.font='bold 34px Arial';ctx.textAlign='center';ctx.fillText('Global Nexus',540,1285);ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.fillText('Authorised Signature',540,1320);ctx.fillText('Powered by Nexora Digital',540,1360);ctx.textAlign='left';
       const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Bill image export failed.')),'image/png'));
       const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Image conversion failed.'));reader.readAsDataURL(blob);});
-      const saved=await Filesystem.writeFile({path:'Nexora-Digital-Weight-Bill.png',data:base64,directory:Directory.Cache});
-      await Share.share({title:'Nexora Digital Bill',text:'Nexora Digital Weight Bill',url:saved.uri,dialogTitle:'Share bill image'});
+      const saved=await Filesystem.writeFile({path:'Global-Nexus-Weight-Bill.png',data:base64,directory:Directory.Cache});
+      await Share.share({title:'Global Nexus Bill',text:'Global Nexus Weight Bill. Powered by Nexora Digital.',url:saved.uri,dialogTitle:'Share bill image'});
       setMessage('Bill image ready. Choose WhatsApp from the Android share panel.');
     } catch(error) { setMessage('Bill image could not be shared: '+(error instanceof Error?error.message:'Please try again.')); }
   }
@@ -342,12 +343,12 @@ export default function App() {
       <p className="hint">Change the rate anytime. Total amount updates automatically.</p>
     </section>
     <section className="bill-preview">
-      <div className="preview-top"><div><span className="eyebrow">NEXORA DIGITAL</span><h2>Bill Preview</h2></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
+      <div className="preview-top"><div><span className="eyebrow">POWERED BY NEXORA DIGITAL</span><h2>GLOBAL NEXUS</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
       <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim() || 'Customer address will appear here'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
       <div className="preview-total"><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div>
       <div className="preview-amount"><div><span>Rate per KG</span><strong>{money(numericRate)}</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong></div></div>
-      <div className="preview-sign"><strong>Nexora</strong><small>Authorised Signature</small></div>
+      <div className="preview-sign"><strong>Global Nexus</strong><small>Authorised Signature</small></div>
     </section>
     <section className="total-card"><div className="total-top"><span>Total Weight</span><span className="verified"><Check size={14} /> Verified entries</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">{entries.length} entries in total</div></section>
     <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check />Save Bill</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown />PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle />WhatsApp</button></section>
