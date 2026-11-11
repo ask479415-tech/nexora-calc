@@ -91,6 +91,17 @@ function total(entries: Entry[]) {
   const grams = entries.reduce((sum, entry) => sum + entry.kg * 1000 + entry.grams, 0);
   return { totalKg: Math.floor(grams / 1000), totalGrams: grams % 1000 };
 }
+function downloadPdfBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
 function readBills(): SavedBill[] {
   try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { return []; }
 }
@@ -163,11 +174,27 @@ export default function App() {
     if (item) setEntries(old => old.map(entry => entry.id === id ? { ...item, id } : entry));
   }
   function saveBill() {
-    if (!entries.length) return;
-    const bill = { id: Date.now(), date: new Date().toLocaleString('en-IN'), entries, ...sum };
-    const next = [bill, ...bills].slice(0, 100);
-    setBills(next); localStorage.setItem(STORE, JSON.stringify(next));
-    setMessage('Bill saved to history.');
+    if (!entries.length) { setMessage('Please add at least one weight before saving.'); return; }
+    try {
+      const bill: SavedBill = {
+        id: Date.now(),
+        date: new Date().toLocaleString('en-IN'),
+        entries: entries.map(entry => ({ ...entry })),
+        ...total(entries),
+      };
+      const next = [bill, ...bills.filter(item => item.id !== bill.id)].slice(0, 100);
+      // Update the visible history even if this browser blocks persistent storage.
+      setBills(next);
+      try {
+        localStorage.setItem(STORE, JSON.stringify(next));
+        if (localStorage.getItem(STORE) === null) throw new Error('Storage is unavailable');
+        setMessage('Bill saved successfully. Open History to view it.');
+      } catch {
+        setMessage('Bill saved for this session, but this device blocked permanent storage. Please allow app storage.');
+      }
+    } catch (error) {
+      setMessage('Could not save bill: ' + (error instanceof Error ? error.message : 'Please try again.'));
+    }
   }
   function pdf() {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -217,7 +244,23 @@ export default function App() {
     doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
     doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('NEXORA DIGITAL',w/2,291,{align:'center'});
-    doc.save('Nexora-Digital-Weight-Bill.pdf');
+    try {
+      const blob = doc.output('blob');
+      const fileName = 'Nexora-Digital-Weight-Bill.pdf';
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+      // Android and mobile browsers may block jsPDF's automatic download.
+      // Prefer the native share sheet when it can accept a PDF, otherwise download via a Blob URL.
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        navigator.share({ files: [file], title: 'Nexora Digital Weight Bill', text: 'Your weight bill from Nexora Digital.' })
+          .then(() => setMessage('PDF bill shared successfully.'))
+          .catch(() => downloadPdfBlob(blob, fileName));
+      } else {
+        downloadPdfBlob(blob, fileName);
+        setMessage('PDF bill generated. Check your Downloads folder.');
+      }
+    } catch (error) {
+      setMessage('PDF could not be created: ' + (error instanceof Error ? error.message : 'Please try again.'));
+    }
   }
   function shareWhatsApp() {
     const lines = entries.map(entry => entry.kg + ' kg ' + String(entry.grams).padStart(3, '0') + ' g').join('\n');
