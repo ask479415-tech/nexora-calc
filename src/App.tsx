@@ -11,22 +11,31 @@ type Customer = { name: string; address: string; phone: string };
 type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number };
 const STORE = 'nexora-calc-bills-v1';
 
+function normalizeOcrDigits(value: string): string {
+  const bengali = '০১২৩৪৫৬৭৮৯';
+  return value.replace(/[০-৯]/g, digit => String(bengali.indexOf(digit))).replace(/[，٫]/g, ',').replace(/[।]/g, '.');
+}
 function extractWeightRows(ocrText: string): Entry[] {
   const rows: Entry[] = [];
-  for (const line of ocrText.split(/\r?\n/)) {
-    const cleaned = line.trim().replace(/^[•*\-–—]+\s*/, '').replace(/\b(?:kg|kgs|gram|grams|gm|g)\b/gi, '').trim();
-    if (!cleaned || /total|date|phone|mobile|page|invoice|bill/i.test(cleaned)) continue;
-    const withoutSerial = cleaned
-      .replace(/^(?:sl\.?\s*no\.?|serial\s*no\.?)\s*\d{1,3}\s*[:.)-]?\s*/i, '')
-      .replace(/^\d{1,3}\s*[,.)-]\s*(?=\d{1,3}\s*[,.:/\-])/, '')
-      .replace(/^\d{1,3}\s+(?=\d{1,3}\s*[,.:/\-])/, '');
-    const match = withoutSerial.match(/^(\d{1,3})\s*[,.:/\-]\s*(\d{1,3})$/)
-      || withoutSerial.match(/^(\d{1,3})\s+(\d{3})$/);
-    if (!match) continue;
-    const kg = Number(match[1]);
-    const grams = Number(match[2].padEnd(3, '0'));
-    if (kg < 1 || kg > 300 || grams < 0 || grams > 999) continue;
-    rows.push({ id: Date.now() + Math.random(), raw: match[1] + ',' + match[2], kg, grams });
+  const ignored = /^(?:total|date|phone|mobile|page|invoice|bill|weight|kg|serial|sl\.?\s*no\.?)/i;
+  for (const originalLine of normalizeOcrDigits(ocrText).split(/\r?\n/)) {
+    let line = originalLine.trim().replace(/^[•*\-–—]+\s*/, '');
+    if (!line || ignored.test(line)) continue;
+    line = line.replace(/\b(?:kgs?|grams?|gms?|gm|g)\b/gi, ' ').trim();
+    // Remove a leading row/serial number, but only when another weight follows it.
+    line = line.replace(/^\s*\d{1,3}\s*[.)\-:]\s*(?=\d)/, '');
+    line = line.replace(/^\s*\d{1,3}\s+(?=\d{1,3}\s*[,.:/]\s*\d)/, '');
+    // Accept common handwritten forms: 12,250 / 12.250 / 12 250 / 12 kg 250 g.
+    const matches = [...line.matchAll(/\d{1,3}\s*[,.:/]\s*\d{1,3}|\d{1,3}\s+\d{3}|\b\d{1,3}\b/g)];
+    if (!matches.length) continue;
+    for (const found of matches) {
+      const token = found[0].trim();
+      const pair = token.match(/^(\d{1,3})\s*[,.:/]\s*(\d{1,3})$/) || token.match(/^(\d{1,3})\s+(\d{3})$/);
+      const kg = Number(pair ? pair[1] : token);
+      const grams = pair ? Number(pair[2].padEnd(3, '0')) : 0;
+      if (!Number.isFinite(kg) || kg < 1 || kg > 300 || grams < 0 || grams > 999) continue;
+      rows.push({ id: Date.now() + Math.random(), raw: pair ? pair[1] + ',' + pair[2] : String(kg), kg, grams });
+    }
   }
   return rows;
 }
@@ -47,11 +56,16 @@ async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
   }
   sourceCtx.putImageData(pixels, 0, 0);
   const images: HTMLCanvasElement[] = [];
-  for (let band = 0; band < 3; band++) {
-    const y = Math.floor(band * height / 3), bottom = band === 2 ? height : Math.floor((band + 1) * height / 3);
+  // Five full-width, non-overlapping strips make small handwriting easier to read
+  // without losing the top or bottom rows of a long page.
+  const bandCount = 5;
+  for (let band = 0; band < bandCount; band++) {
+    const y = Math.floor(band * height / bandCount);
+    const bottom = band === bandCount - 1 ? height : Math.floor((band + 1) * height / bandCount);
     const crop = document.createElement('canvas'); crop.width = width; crop.height = bottom - y;
     const ctx = crop.getContext('2d', { willReadFrequently: true }); if (!ctx) continue;
-    ctx.drawImage(source, 0, y, width, bottom - y, 0, 0, width, bottom - y); images.push(crop);
+    ctx.drawImage(source, 0, y, width, bottom - y, 0, 0, width, bottom - y);
+    images.push(crop);
   }
   return images;
 }
@@ -132,24 +146,37 @@ export default function App() {
 
   async function scan(file?: File) {
     if (!file) return;
-    setBusy(true); setMessage('Enhancing the photo and comparing multiple OCR readings...');
+    setBusy(true); setMessage('Scanning the full page in 5 sections and checking 6 OCR readings per section...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
       worker = await createWorker('eng');
       const images = await makeOcrImages(file), detected: Entry[] = [];
-      for (const image of images) {
+      for (let index = 0; index < images.length; index++) {
+        const image = images[index];
         const readings: Entry[][] = [];
-        for (const variant of [image, thresholdImage(image, 155), thresholdImage(image, 195)]) {
-          await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789,. ', preserve_interword_spaces: '1' });
-          const result = await worker.recognize(variant);
-          readings.push(extractWeightRows(result.data.text));
+        // Compare original, two contrast levels, and two page-segmentation modes.
+        // Keep the reading that finds the most rows in this strip instead of voting
+        // row-by-row (which can accidentally discard a row seen by only one pass).
+        const variants = [image, thresholdImage(image, 145), thresholdImage(image, 175)];
+        for (const variant of variants) {
+          for (const pageMode of ['6', '11']) {
+            await worker.setParameters({
+              tessedit_pageseg_mode: pageMode as any,
+              tessedit_char_whitelist: '0123456789০১২৩৪৫৬৭৮৯,. ',
+              preserve_interword_spaces: '1',
+              user_defined_dpi: '300'
+            });
+            const result = await worker.recognize(variant);
+            readings.push(extractWeightRows(result.data.text));
+          }
         }
-        detected.push(...voteOcrRows(readings));
+        const bestReading = readings.reduce((best, current) => current.length > best.length ? current : best, [] as Entry[]);
+        detected.push(...bestReading.map((entry, row) => ({ ...entry, id: Date.now() + Math.random() + index * 1000 + row })));
       }
       setPendingEntries(detected); setSelectedIds(detected.map(item => item.id));
       setReviewPhoto(URL.createObjectURL(file));
       setMessage(detected.length
-        ? detected.length + ' possible weights found using 3 OCR readings per section. Check every digit before calculating.'
+        ? detected.length + ' weight entries detected across 5 page sections. Please compare the count with your paper and edit any incorrect reading.'
         : 'No clear weight entries detected. You can add them manually.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'OCR could not run. Please try again.');
@@ -325,11 +352,11 @@ export default function App() {
     <button className="clear-button" onClick={() => { setEntries([]); setMessage('Start a new calculation.'); }}><X size={15} /> Start New Calculation</button>
     <footer>NEXORA DIGITAL <span>•</span> Weight Record & Bill</footer>
     {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
-      <div className="modal-head"><div><h2>Select Weight Entries</h2><p>Compare the list with your photo and select the correct weights.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
+      <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page" /></div>
-      <div className="review-tools"><strong>Detected weights: {pendingEntries.length}</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>Select All</button><button type="button" onClick={() => setSelectedIds([])}>Clear All</button></div>
+      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>Select All</button><button type="button" onClick={() => setSelectedIds([])}>Clear All</button></div>
       {pendingEntries.length ? <div className="review-list">{pendingEntries.map(item => <label className="review-row" key={item.id}><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={event => setSelectedIds(old => event.target.checked ? [...old, item.id] : old.filter(id => id !== item.id))} /><b>{item.kg},{String(item.grams).padStart(3, '0')}</b><small>{item.kg} kg {item.grams} g</small></label>)}</div> : <div className="empty-state">No weights detected. You can add them manually after closing this photo.</div>}
-      <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />OK - Calculate Selected</button></div>
+      <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
     </div></div>}
     {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="modal-head"><h2>Bill History</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X /></button></div>{bills.length ? bills.map(bill => <button className="history-item" key={bill.id} onClick={() => loadBill(bill)}><span><b>{bill.totalKg} kg {bill.totalGrams} g</b><small>{bill.date}</small></span><span>{bill.entries.length} entries →</span></button>) : <p className="empty-state">No saved bills yet.</p>}</div></div>}
   </main>;
