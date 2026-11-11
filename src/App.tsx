@@ -16,8 +16,13 @@ function extractWeightRows(ocrText: string): Entry[] {
       .replace(/\b(?:kg|kgs|gram|grams|gm|g)\b|কেজি|গ্রাম/gi, '')
       .trim();
     if (!cleaned || /total|মোট|তারিখ|date|phone|mobile|পৃষ্ঠা|page/i.test(cleaned)) continue;
-    const match = cleaned.match(/^(?:\d{1,3}[.)]\s*)?(\d{1,3})\s*[,.:/\-]\s*(\d{1,3})$/)
-      || cleaned.match(/^(?:\d{1,3}[.)]\s*)?(\d{1,3})\s+(\d{3})$/);
+    // Remove a leading serial number before reading the actual weight.
+    const withoutSerial = cleaned
+      .replace(/^(?:sl\.?\s*no\.?|serial\s*no\.?|ক্রমিক\s*নং)\s*\d{1,3}\s*[:.)-]?\s*/i, '')
+      .replace(/^\d{1,3}\s*[.)-]\s*(?=\d{1,3}\s*[,.:/\-])/,'')
+      .replace(/^\d{1,3}\s+(?=\d{1,3}\s*[,.:/\-])/,'');
+    const match = withoutSerial.match(/^(\d{1,3})\s*[,.:/\-]\s*(\d{1,3})$/)
+      || withoutSerial.match(/^(\d{1,3})\s+(\d{3})$/);
     if (!match) continue;
     const kg = Number(match[1]);
     const grams = Number(match[2].padEnd(3, '0'));
@@ -56,6 +61,9 @@ export default function App() {
   const [bills, setBills] = useState<SavedBill[]>(readBills);
   const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
+  const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
+  const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const sum = useMemo(() => total(entries), [entries]);
@@ -68,10 +76,12 @@ export default function App() {
       worker = await createWorker('eng+ben');
       const result = await worker.recognize(file);
       const found = extractWeightRows(result.data.text);
-      setEntries(found);
+      setPendingEntries(found);
+      setSelectedIds(found.map(item => item.id));
+      setReviewPhoto(URL.createObjectURL(file));
       setMessage(found.length
-        ? found.length + 'টি সম্ভাব্য ওজন পাওয়া গেছে। প্রতিটি লাইন যাচাই করে তারপর হিসাব করুন।'
-        : 'পরিষ্কার ওজন পাওয়া যায়নি। ছবি সোজা ও আলোতে তুলুন, অথবা হাতে লিখুন।');
+        ? found.length + 'টি সম্ভাব্য ওজন পাওয়া গেছে। ছবি ও তালিকা মিলিয়ে প্রয়োজনীয় লাইন বেছে নিন।'
+        : 'ছবি খোলা হয়েছে, কিন্তু পরিষ্কার ওজন পাওয়া যায়নি। আবার ছবি তুলুন অথবা হাতে লিখুন।');
     } catch (e) {
       const reason = e instanceof Error ? e.message : '';
       setMessage(reason || 'OCR চালানো যায়নি। প্রথমবার হলে ইন্টারনেট চালু করে আবার চেষ্টা করুন।');
@@ -79,6 +89,22 @@ export default function App() {
       if (worker) await worker.terminate();
       setBusy(false);
     }
+  }
+  function confirmPhotoSelection() {
+    const chosen = pendingEntries.filter(item => selectedIds.includes(item.id));
+    setEntries(chosen);
+    if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
+    setReviewPhoto(null);
+    setPendingEntries([]);
+    setSelectedIds([]);
+    setMessage(chosen.length + 'টি নির্বাচিত ওজন দিয়ে হিসাব তৈরি হয়েছে।');
+  }
+  function cancelPhotoReview() {
+    if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
+    setReviewPhoto(null);
+    setPendingEntries([]);
+    setSelectedIds([]);
+    setMessage('ছবি নির্বাচন বাতিল হয়েছে।');
   }
   function addEntry() {
     const item = parseEntry(draft);
@@ -136,6 +162,18 @@ export default function App() {
     <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check/>সেভ করুন</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown/>PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle/>WhatsApp</button></section>
     <button className="clear-button" onClick={() => { setEntries([]); setMessage('নতুন হিসাব শুরু করুন।'); }}> <X size={15}/> নতুন হিসাব শুরু</button>
     <footer> NEXORA CALC <span>•</span> Simple. Accurate. Yours.</footer>
+    {reviewPhoto && <div className="modal-backdrop review-backdrop">
+      <div className="review-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><div><h2>ছবি ও ওজন বাছাই</h2><p>যে ওজনগুলো হিসাব করবেন সেগুলোতে টিক দিন</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X/></button></div>
+        <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page"/></div>
+        <div className="review-tools"><strong>পড়া ওজন: {pendingEntries.length}টি</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>সব নির্বাচন</button><button type="button" onClick={() => setSelectedIds([])}>সব বাদ</button></div>
+        {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <label className="review-row" key={item.id}>
+          <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={e => setSelectedIds(old => e.target.checked ? [...old,item.id] : old.filter(id => id !== item.id))}/>
+          <span className="review-index">{index+1}</span><b>{item.kg},{String(item.grams).padStart(3,'0')}</b><small>{item.kg} kg {item.grams} g</small>
+        </label>)}</div> : <div className="empty-state">কোনো ওজন পড়া যায়নি। ছবি দেখে পরে হাতে যোগ করতে পারবেন।</div>}
+        <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>বাতিল</button><button className="primary-action" onClick={confirmPhotoSelection}><Check/> OK — নির্বাচিত হিসাব</button></div>
+      </div>
+    </div>}
     {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={e => e.stopPropagation()}><div className="modal-head"><h2>আগের হিসাব</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X/></button></div>{bills.length ? bills.map(b => <button className="history-item" key={b.id} onClick={() => loadBill(b)}><span><b>{b.totalKg} kg {b.totalGrams} g</b><small>{b.date}</small></span><span>{b.entries.length} লাইন →</span></button>) : <p className="empty-state">কোনো হিস্ট্রি নেই</p>}</div></div>}
   </main>;
 }
