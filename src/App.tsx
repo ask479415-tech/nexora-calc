@@ -177,7 +177,7 @@ export default function App() {
   }
   function cancelPhotoReview() {
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null); setPendingEntries([]); setSelectedIds([]);
+    setReviewPhoto(null); setPendingEntries([]);
     setMessage('Photo selection cancelled.');
   }
   function addEntry() {
