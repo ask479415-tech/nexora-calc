@@ -213,7 +213,7 @@ export default function App() {
     doc.text(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',w-m-2,y,{align:'right'});
     y+=24;doc.setDrawColor(145,158,172);doc.line(w-m-48,y,w-m,y);
     doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(105,119,135);
-    doc.text('Authorized Signature',w-m-24,y+5,{align:'center'});
+    doc.text('Sign by Nexora Digital',w-m-24,y+5,{align:'center'});
     doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
     doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('NEXORA DIGITAL',w/2,291,{align:'center'});
