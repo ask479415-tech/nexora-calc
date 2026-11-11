@@ -26,6 +26,42 @@ function extractWeightRows(ocrText: string): Entry[] {
   }
   return rows;
 }
+async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.max(2, Math.min(3, 1800 / bitmap.width));
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+  const source = document.createElement('canvas');
+  source.width = width; source.height = height;
+  const sourceCtx = source.getContext('2d', { willReadFrequently: true });
+  if (!sourceCtx) throw new Error('Image processing is not supported on this device.');
+  sourceCtx.imageSmoothingEnabled = true;
+  sourceCtx.imageSmoothingQuality = 'high';
+  sourceCtx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  const pixels = sourceCtx.getImageData(0, 0, width, height);
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const gray = pixels.data[i] * 0.299 + pixels.data[i + 1] * 0.587 + pixels.data[i + 2] * 0.114;
+    const enhanced = Math.max(0, Math.min(255, (gray - 128) * 1.45 + 128));
+    pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = enhanced;
+  }
+  sourceCtx.putImageData(pixels, 0, 0);
+  const images: HTMLCanvasElement[] = [source];
+  // Read overlapping horizontal sections so long handwritten lists are not treated as one dense block.
+  const bandHeight = Math.ceil(height / 3);
+  for (let band = 0; band < 3; band++) {
+    const y = Math.max(0, Math.floor(band * height / 3) - Math.round(bandHeight * 0.08));
+    const bottom = Math.min(height, Math.ceil((band + 1) * height / 3) + Math.round(bandHeight * 0.08));
+    const crop = document.createElement('canvas');
+    crop.width = width; crop.height = bottom - y;
+    const ctx = crop.getContext('2d');
+    if (!ctx) continue;
+    ctx.drawImage(source, 0, y, width, bottom - y, 0, 0, width, bottom - y);
+    images.push(crop);
+  }
+  return images;
+}
+
 function digits(value: string) {
   return value.replace(/[，.]/g, ',');
 }
@@ -70,12 +106,18 @@ export default function App() {
   async function scan(file?: File) {
     if (!file) return;
     setBusy(true);
-    setMessage('Reading handwriting with English OCR...');
+    setMessage('Enhancing the photo and scanning each section...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
       worker = await createWorker('eng');
-      const result = await worker.recognize(file);
-      const found = extractWeightRows(result.data.text);
+      const images = await makeOcrImages(file);
+      const textParts: string[] = [];
+      for (let index = 0; index < images.length; index++) {
+        await worker.setParameters({ tessedit_pageseg_mode: index === 0 ? '11' : '6' });
+        const result = await worker.recognize(images[index]);
+        textParts.push(result.data.text);
+      }
+      const found = extractWeightRows(textParts.join('\\n'));
       setPendingEntries(found);
       setSelectedIds(found.map(item => item.id));
       setReviewPhoto(URL.createObjectURL(file));
