@@ -8,7 +8,7 @@ import { Share } from '@capacitor/share';
 
 type Entry = { id: number; raw: string; kg: number; grams: number };
 type Customer = { name: string; address: string; phone: string };
-type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number };
+type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number; rate?: number; totalAmount?: number };
 const STORE = 'nexora-calc-bills-v1';
 
 function normalizeOcrDigits(value: string): string {
@@ -112,6 +112,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [customer, setCustomer] = useState<Customer>({ name: '', address: '', phone: '' });
+  const [rate, setRate] = useState('20.00');
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Take a photo or choose a page from your gallery.');
@@ -123,6 +124,10 @@ export default function App() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const sum = useMemo(() => total(entries), [entries]);
+  const totalWeightKg = (sum.totalKg * 1000 + sum.totalGrams) / 1000;
+  const numericRate = Math.max(0, Number(rate) || 0);
+  const totalAmount = Math.round(totalWeightKg * numericRate * 100) / 100;
+  const money = (value: number) => '₹' + value.toFixed(2);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setShowSplash(false), 1600);
@@ -192,7 +197,7 @@ export default function App() {
   async function saveBill() {
     if (!entries.length) { setMessage('Please add at least one weight before saving.'); return; }
     try {
-      const bill: SavedBill = { id: Date.now(), date: new Date().toLocaleString('en-IN'), customer: { ...customer }, entries: entries.map(entry => ({ ...entry })), ...total(entries) };
+      const bill: SavedBill = { id: Date.now(), date: new Date().toLocaleString('en-IN'), customer: { ...customer }, entries: entries.map(entry => ({ ...entry })), ...total(entries), rate: numericRate, totalAmount };
       const next = [bill, ...bills].slice(0, 100);
       await Preferences.set({ key: STORE, value: JSON.stringify(next) });
       const check = await Preferences.get({ key: STORE });
@@ -245,9 +250,13 @@ export default function App() {
     y+=12;if(y>242){doc.addPage();y=35;}
     doc.setDrawColor(205,215,226);doc.line(m,y,w-m,y);y+=10;
     doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(35,53,73);doc.text('GRAND TOTAL',m+2,y);
-    doc.setFontSize(18);doc.setTextColor(18,65,110);
+    doc.setFontSize(16);doc.setTextColor(18,65,110);
     doc.text(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',w-m-2,y,{align:'right'});
-    y+=24; doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(18,65,110);
+    y+=10; doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(70,86,104);
+    doc.text('Rate per KG: '+money(numericRate),m+2,y);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(18,65,110);
+    doc.text('TOTAL AMOUNT: '+money(totalAmount),w-m-2,y,{align:'right'});
+    y+=18; doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(18,65,110);
     doc.text('Nexora',w-m-24,y+3,{align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(105,119,135);
     doc.text('Authorised Signature',w-m-24,y+9,{align:'center'});
@@ -275,7 +284,7 @@ export default function App() {
       ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,545);ctx.lineTo(988,545);ctx.stroke();
       ctx.fillStyle='#eaf0f6';ctx.fillRect(92,565,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,606);ctx.fillText('WEIGHT',360,606);ctx.textAlign='right';ctx.fillText('GRAMS',950,606);ctx.textAlign='left';
       let y=680;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
-      y=Math.max(y+50,1000);ctx.fillStyle='#123b70';ctx.fillRect(92,y,896,150);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.fillText('GRAND TOTAL',125,y+55);ctx.fillStyle='#fff';ctx.font='bold 52px Arial';ctx.textAlign='right';ctx.fillText(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',950,y+112);ctx.textAlign='left';
+      y=Math.max(y+50,1000);ctx.fillStyle='#123b70';ctx.fillRect(92,y,896,190);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.fillText('TOTAL WEIGHT',125,y+48);ctx.fillStyle='#fff';ctx.font='bold 42px Arial';ctx.textAlign='right';ctx.fillText(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',950,y+55);ctx.textAlign='left';ctx.fillStyle='#c9def2';ctx.font='24px Arial';ctx.fillText('Rate per KG: '+money(numericRate),125,y+105);ctx.fillStyle='#fff';ctx.font='bold 36px Arial';ctx.textAlign='right';ctx.fillText('TOTAL: '+money(totalAmount),950,y+158);ctx.textAlign='left';
       ctx.fillStyle='#123b70';ctx.font='bold 34px Arial';ctx.textAlign='center';ctx.fillText('Nexora',540,1285);ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.fillText('Authorised Signature',540,1320);ctx.fillText('Thank you for choosing Nexora Digital',540,1360);ctx.textAlign='left';
       const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Bill image export failed.')),'image/png'));
       const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Image conversion failed.'));reader.readAsDataURL(blob);});
@@ -285,7 +294,7 @@ export default function App() {
     } catch(error) { setMessage('Bill image could not be shared: '+(error instanceof Error?error.message:'Please try again.')); }
   }
   function loadBill(bill: SavedBill) {
-    setEntries(bill.entries); setCustomer(bill.customer || { name: '', address: '', phone: '' }); setShowHistory(false); setMessage('Previous bill loaded.');
+    setEntries(bill.entries); setCustomer(bill.customer || { name: '', address: '', phone: '' }); setRate(String(typeof bill.rate === 'number' ? bill.rate : 20)); setShowHistory(false); setMessage('Previous bill loaded.');
   }
 
   if (showSplash) return <div className="splash-screen">
@@ -326,11 +335,18 @@ export default function App() {
       <label>Phone Number<input type="tel" inputMode="tel" value={customer.phone} onChange={event => setCustomer(old => ({ ...old, phone: event.target.value }))} placeholder="Enter phone number" /></label>
       <label>Address<textarea rows={2} value={customer.address} onChange={event => setCustomer(old => ({ ...old, address: event.target.value }))} placeholder="Enter customer address" /></label>
     </section>
+    <section className="customer-card rate-card">
+      <div className="section-heading"><div><span className="step">04</span><h2>Rate & Amount</h2></div><span className="count">Editable rate</span></div>
+      <label>Rate per KG (₹)<input type="number" min="0" step="0.01" inputMode="decimal" value={rate} onChange={event => setRate(event.target.value)} placeholder="Enter rate per KG" /></label>
+      <div className="rate-calculation"><span>{totalWeightKg.toFixed(3)} KG × {money(numericRate)}</span><strong>{money(totalAmount)}</strong></div>
+      <p className="hint">Change the rate anytime. Total amount updates automatically.</p>
+    </section>
     <section className="bill-preview">
       <div className="preview-top"><div><span className="eyebrow">NEXORA DIGITAL</span><h2>Bill Preview</h2></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
       <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim() || 'Customer address will appear here'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
-      <div className="preview-total"><span>Grand Total</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div>
+      <div className="preview-total"><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div>
+      <div className="preview-amount"><div><span>Rate per KG</span><strong>{money(numericRate)}</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong></div></div>
       <div className="preview-sign"><strong>Nexora</strong><small>Authorised Signature</small></div>
     </section>
     <section className="total-card"><div className="total-top"><span>Total Weight</span><span className="verified"><Check size={14} /> Verified entries</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">{entries.length} entries in total</div></section>
