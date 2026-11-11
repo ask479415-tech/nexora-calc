@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, Scale, RefreshCw, X } from 'lucide-react';
-import { createWorker } from 'tesseract.js';
 import { jsPDF } from 'jspdf';
 
 type Entry = { id: number; raw: string; kg: number; grams: number };
@@ -43,38 +42,44 @@ export default function App() {
 
   async function scan(file?: File) {
     if (!file) return;
-    setBusy(true); setMessage('ছবি পড়া হচ্ছে… একটু অপেক্ষা করুন');
+    setBusy(true); setMessage('AI দিয়ে খাতার লেখা পড়া হচ্ছে…');
     try {
-      const worker = await createWorker('eng+ben', 1, {
-        logger: m => { if (m.status === 'recognizing text') setMessage('ছবি পড়া হচ্ছে… ' + Math.round(m.progress * 100) + '%'); }
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const value = String(reader.result || '');
+          const comma = value.indexOf(',');
+          if (comma < 0) reject(new Error('ছবি পড়া যায়নি'));
+          else resolve(value.slice(comma + 1));
+        };
+        reader.onerror = () => reject(new Error('ছবি পড়া যায়নি'));
+        reader.readAsDataURL(file);
       });
-      const result = await worker.recognize(file);
-      await worker.terminate();
-      const lines = result.data.text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-      const found: Entry[] = [];
-      for (const line of lines) {
-        // OCR must identify a complete weight line; ignore page numbers, dates and stray text.
-        const normalized = digits(line)
-          .replace(/\b(?:kg|gm|g)\b/gi, '')
-          .replace(/কেজি|গ্রাম/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        const match = normalized.match(/^(?:(?:\d{1,2})\s*[:)\-]\s*)?(\d{1,3})\s*[,،]\s*(\d{1,3})$/);
-        if (!match) continue;
-        const kg = Number(match[1]);
-        const grams = Number(match[2]);
-        if (kg < 1 || kg > 300 || grams < 0 || grams > 999) continue;
-        found.push({
-          id: Date.now() + Math.random(),
-          raw: match[1] + ',' + match[2],
-          kg,
-          grams,
-        });
+      const mimeType = file.type === 'image/png' || file.type === 'image/webp' ? file.type : 'image/jpeg';
+      const response = await fetch('https://nexora-calc-ai.onrender.com/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, mimeType }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'AI দিয়ে ছবি পড়া যায়নি।');
       }
+      const found: Entry[] = (payload.data?.weights || []).map((w: any) => ({
+        id: Date.now() + Math.random(),
+        raw: String(w.originalText || (w.kg + ',' + String(w.grams).padStart(3, '0'))),
+        kg: Number(w.kg),
+        grams: Number(w.grams),
+      })).filter((e: Entry) => Number.isInteger(e.kg) && Number.isInteger(e.grams) && e.kg >= 1 && e.kg <= 300 && e.grams >= 0 && e.grams <= 999);
       setEntries(found);
-      setMessage(found.length ? found.length + 'টি সংখ্যা পাওয়া গেছে। হিসাবের আগে সব লাইন যাচাই করুন।' : 'সংখ্যা পাওয়া যায়নি। আলো ভালো করে আবার ছবি তুলুন অথবা হাতে যোগ করুন।');
+      setMessage(found.length
+        ? found.length + 'টি সম্ভাব্য ওজন পাওয়া গেছে। হিসাবের আগে প্রতিটি লাইন মিলিয়ে নিন।'
+        : 'কোনো পরিষ্কার ওজনের লাইন পাওয়া যায়নি। আলো ভালো করে সোজা ছবি তুলুন অথবা হাতে লিখুন।');
     } catch (e) {
-      setMessage('OCR চালু হয়নি। ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।');
+      const reason = e instanceof Error ? e.message : '';
+      setMessage(reason.includes('Failed to fetch')
+        ? 'AI সার্ভারে সংযোগ হচ্ছে না। ইন্টারনেট পরীক্ষা করে আবার চেষ্টা করুন।'
+        : reason || 'ছবি পড়া যায়নি। আবার চেষ্টা করুন।');
     } finally { setBusy(false); }
   }
   function addEntry() {
@@ -114,7 +119,7 @@ export default function App() {
     <header className="topbar"><div className="brand-mark"><Scale size={23}/></div><div><strong>Nexora Calc</strong><small>হাতের লেখার ওজন ক্যালকুলেটর</small></div><button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History/></button></header>
     <section className="hero"><div className="hero-copy"><span className="eyebrow">SMART WEIGHT BOOK</span><h1>ওজনের হিসাব,<br/>এখন আরও সহজ</h1><p>খাতার ছবি তুলুন, সংখ্যাগুলো যাচাই করুন, মোট ওজন বের করুন।</p></div><div className="hero-icon"><Scale size={58}/></div></section>
     <section className="upload-card">
-      <div className="section-heading"><div><span className="step">01</span><h2>খাতার ছবি দিন</h2></div><span className="offline-tag">OCR</span></div>
+      <div className="section-heading"><div><span className="step">01</span><h2>খাতার ছবি দিন</h2></div><span className="offline-tag">AI OCR</span></div>
       <div className="upload-actions">
         <button className="primary-action" onClick={() => cameraRef.current?.click()} disabled={busy}><Camera/>ক্যামেরা</button>
         <button className="secondary-action" onClick={() => galleryRef.current?.click()} disabled={busy}><ImagePlus/>গ্যালারি</button>
@@ -122,7 +127,7 @@ export default function App() {
       <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={e => scan(e.target.files?.[0])}/>
       <input ref={galleryRef} hidden type="file" accept="image/*" onChange={e => scan(e.target.files?.[0])}/>
       <p className="status-line">{busy && <RefreshCw className="spin" size={15}/>} {message}</p>
-      <p className="hint">উদাহরণ: 44,100 = ৪৪ কেজি ১০০ গ্রাম। OCR ভুল করতে পারে, তাই হিসাবের আগে যাচাই করুন।</p>
+      <p className="hint">উদাহরণ: 44,100 = ৪৪ কেজি ১০০ গ্রাম। AI ভুল করতে পারে, তাই হিসাবের আগে প্রতিটি ওজন যাচাই করুন।</p>
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>সংখ্যা যাচাই করুন</h2></div><span className="count">{entries.length} লাইন</span></div>
