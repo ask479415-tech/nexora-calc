@@ -80,19 +80,6 @@ function thresholdImage(input: HTMLCanvasElement, threshold: number): HTMLCanvas
   }
   ctx.putImageData(pixels, 0, 0); return output;
 }
-function voteOcrRows(results: Entry[][]): Entry[] {
-  const base = results[0] || [];
-  const longest = results.reduce((best, current) => current.length > best.length ? current : best, base);
-  return longest.map((fallback, index) => {
-    const counts = new Map<string, { count: number; entry: Entry }>();
-    results.map(r => r[index]).filter(Boolean).forEach(entry => {
-      const key = entry.kg + ',' + String(entry.grams).padStart(3, '0');
-      const old = counts.get(key); counts.set(key, { count: (old?.count || 0) + 1, entry });
-    });
-    const winner = [...counts.values()].sort((x, y) => y.count - x.count)[0];
-    return { ...(winner && winner.count > 1 ? winner.entry : fallback), id: Date.now() + Math.random() + index };
-  });
-}
 function digits(value: string) {
   return value.replace(/[，.]/g, ',');
 }
@@ -133,7 +120,6 @@ export default function App() {
   const [editing, setEditing] = useState<number | null>(null);
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const sum = useMemo(() => total(entries), [entries]);
@@ -173,7 +159,7 @@ export default function App() {
         const bestReading = readings.reduce((best, current) => current.length > best.length ? current : best, [] as Entry[]);
         detected.push(...bestReading.map((entry, row) => ({ ...entry, id: Date.now() + Math.random() + index * 1000 + row })));
       }
-      setPendingEntries(detected); setSelectedIds(detected.map(item => item.id));
+      setPendingEntries(detected);
       setReviewPhoto(URL.createObjectURL(file));
       setMessage(detected.length
         ? detected.length + ' weight entries detected across 5 page sections. Please compare the count with your paper and edit any incorrect reading.'
@@ -183,10 +169,10 @@ export default function App() {
     } finally { if (worker) await worker.terminate(); setBusy(false); }
   }
   function confirmPhotoSelection() {
-    const chosen = pendingEntries.filter(item => selectedIds.includes(item.id));
+    const chosen = pendingEntries;
     setEntries(chosen);
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null); setPendingEntries([]); setSelectedIds([]);
+    setReviewPhoto(null); setPendingEntries([]);
     setMessage(chosen.length + ' selected entries are ready for calculation.');
   }
   function cancelPhotoReview() {
@@ -354,8 +340,8 @@ export default function App() {
     {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
       <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page" /></div>
-      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>Select All</button><button type="button" onClick={() => setSelectedIds([])}>Clear All</button></div>
-      {pendingEntries.length ? <div className="review-list">{pendingEntries.map(item => <label className="review-row" key={item.id}><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={event => setSelectedIds(old => event.target.checked ? [...old, item.id] : old.filter(id => id !== item.id))} /><b>{item.kg},{String(item.grams).padStart(3, '0')}</b><small>{item.kg} kg {item.grams} g</small></label>)}</div> : <div className="empty-state">No weights detected. You can add them manually after closing this photo.</div>}
+      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong></div>
+      {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><b>{index+1}. {item.kg},{String(item.grams).padStart(3, '0')}</b><small>{item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No weights detected. You can add them manually after closing this photo.</div>}
       <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
     </div></div>}
     {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="modal-head"><h2>Bill History</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X /></button></div>{bills.length ? bills.map(bill => <button className="history-item" key={bill.id} onClick={() => loadBill(bill)}><span><b>{bill.totalKg} kg {bill.totalGrams} g</b><small>{bill.date}</small></span><span>{bill.entries.length} entries →</span></button>) : <p className="empty-state">No saved bills yet.</p>}</div></div>}
