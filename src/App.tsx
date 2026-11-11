@@ -113,7 +113,7 @@ export default function App() {
       const images = await makeOcrImages(file);
       const textParts: string[] = [];
       for (let index = 0; index < images.length; index++) {
-        await worker.setParameters({ tessedit_pageseg_mode: index === 0 ? 11 : 6 });
+        await worker.setParameters({ tessedit_pageseg_mode: (index === 0 ? '11' : '6') as any });
         const result = await worker.recognize(images[index]);
         textParts.push(result.data.text);
       }
