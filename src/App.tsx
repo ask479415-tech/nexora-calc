@@ -28,40 +28,53 @@ function extractWeightRows(ocrText: string): Entry[] {
 }
 async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.max(2, Math.min(3, 1800 / bitmap.width));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
-  const source = document.createElement('canvas');
-  source.width = width; source.height = height;
+  const scale = Math.max(2, Math.min(3, 2200 / bitmap.width));
+  const width = Math.round(bitmap.width * scale), height = Math.round(bitmap.height * scale);
+  const source = document.createElement('canvas'); source.width = width; source.height = height;
   const sourceCtx = source.getContext('2d', { willReadFrequently: true });
   if (!sourceCtx) throw new Error('Image processing is not supported on this device.');
-  sourceCtx.imageSmoothingEnabled = true;
-  sourceCtx.imageSmoothingQuality = 'high';
-  sourceCtx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
+  sourceCtx.imageSmoothingEnabled = true; sourceCtx.imageSmoothingQuality = 'high';
+  sourceCtx.drawImage(bitmap, 0, 0, width, height); bitmap.close();
   const pixels = sourceCtx.getImageData(0, 0, width, height);
   for (let i = 0; i < pixels.data.length; i += 4) {
-    const gray = pixels.data[i] * 0.299 + pixels.data[i + 1] * 0.587 + pixels.data[i + 2] * 0.114;
-    const enhanced = Math.max(0, Math.min(255, (gray - 128) * 1.45 + 128));
-    pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = enhanced;
+    const gray = pixels.data[i] * .299 + pixels.data[i + 1] * .587 + pixels.data[i + 2] * .114;
+    const v = Math.max(0, Math.min(255, (gray - 128) * 1.65 + 128));
+    pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = v;
   }
   sourceCtx.putImageData(pixels, 0, 0);
-  const images: HTMLCanvasElement[] = [source];
-  // Read overlapping horizontal sections so long handwritten lists are not treated as one dense block.
-  const bandHeight = Math.ceil(height / 3);
+  const images: HTMLCanvasElement[] = [];
   for (let band = 0; band < 3; band++) {
-    const y = Math.max(0, Math.floor(band * height / 3) - Math.round(bandHeight * 0.08));
-    const bottom = Math.min(height, Math.ceil((band + 1) * height / 3) + Math.round(bandHeight * 0.08));
-    const crop = document.createElement('canvas');
-    crop.width = width; crop.height = bottom - y;
-    const ctx = crop.getContext('2d');
-    if (!ctx) continue;
-    ctx.drawImage(source, 0, y, width, bottom - y, 0, 0, width, bottom - y);
-    images.push(crop);
+    const y = Math.floor(band * height / 3), bottom = band === 2 ? height : Math.floor((band + 1) * height / 3);
+    const crop = document.createElement('canvas'); crop.width = width; crop.height = bottom - y;
+    const ctx = crop.getContext('2d', { willReadFrequently: true }); if (!ctx) continue;
+    ctx.drawImage(source, 0, y, width, bottom - y, 0, 0, width, bottom - y); images.push(crop);
   }
   return images;
 }
-
+function thresholdImage(input: HTMLCanvasElement, threshold: number): HTMLCanvasElement {
+  const output = document.createElement('canvas'); output.width = input.width; output.height = input.height;
+  const ctx = output.getContext('2d', { willReadFrequently: true }); if (!ctx) return input;
+  ctx.drawImage(input, 0, 0);
+  const pixels = ctx.getImageData(0, 0, output.width, output.height);
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const v = pixels.data[i] >= threshold ? 255 : 0;
+    pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = v;
+  }
+  ctx.putImageData(pixels, 0, 0); return output;
+}
+function voteOcrRows(results: Entry[][]): Entry[] {
+  const base = results[0] || [];
+  const longest = results.reduce((best, current) => current.length > best.length ? current : best, base);
+  return longest.map((fallback, index) => {
+    const counts = new Map<string, { count: number; entry: Entry }>();
+    results.map(r => r[index]).filter(Boolean).forEach(entry => {
+      const key = entry.kg + ',' + String(entry.grams).padStart(3, '0');
+      const old = counts.get(key); counts.set(key, { count: (old?.count || 0) + 1, entry });
+    });
+    const winner = [...counts.values()].sort((x, y) => y.count - x.count)[0];
+    return { ...(winner && winner.count > 1 ? winner.entry : fallback), id: Date.now() + Math.random() + index };
+  });
+}
 function digits(value: string) {
   return value.replace(/[，.]/g, ',');
 }
@@ -105,32 +118,28 @@ export default function App() {
 
   async function scan(file?: File) {
     if (!file) return;
-    setBusy(true);
-    setMessage('Enhancing the photo and scanning each section...');
+    setBusy(true); setMessage('Enhancing the photo and comparing multiple OCR readings...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
       worker = await createWorker('eng');
-      const images = await makeOcrImages(file);
-      const textParts: string[] = [];
-      for (let index = 0; index < images.length; index++) {
-        await worker.setParameters({ tessedit_pageseg_mode: (index === 0 ? '11' : '6') as any });
-        const result = await worker.recognize(images[index]);
-        textParts.push(result.data.text);
+      const images = await makeOcrImages(file), detected: Entry[] = [];
+      for (const image of images) {
+        const readings: Entry[][] = [];
+        for (const variant of [image, thresholdImage(image, 155), thresholdImage(image, 195)]) {
+          await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789,. ', preserve_interword_spaces: '1' });
+          const result = await worker.recognize(variant);
+          readings.push(extractWeightRows(result.data.text));
+        }
+        detected.push(...voteOcrRows(readings));
       }
-      const found = extractWeightRows(textParts.join('\n'));
-      setPendingEntries(found);
-      setSelectedIds(found.map(item => item.id));
+      setPendingEntries(detected); setSelectedIds(detected.map(item => item.id));
       setReviewPhoto(URL.createObjectURL(file));
-      setMessage(found.length
-        ? found.length + ' possible weight entries found. Check the photo and select the correct rows.'
-        : 'The photo is open, but no clear weight entries were detected. You can add them manually.');
+      setMessage(detected.length
+        ? detected.length + ' possible weights found using 3 OCR readings per section. Check every digit before calculating.'
+        : 'No clear weight entries detected. You can add them manually.');
     } catch (error) {
-      const reason = error instanceof Error ? error.message : '';
-      setMessage(reason || 'OCR could not run. Connect to the internet and try again.');
-    } finally {
-      if (worker) await worker.terminate();
-      setBusy(false);
-    }
+      setMessage(error instanceof Error ? error.message : 'OCR could not run. Please try again.');
+    } finally { if (worker) await worker.terminate(); setBusy(false); }
   }
   function confirmPhotoSelection() {
     const chosen = pendingEntries.filter(item => selectedIds.includes(item.id));
@@ -162,63 +171,57 @@ export default function App() {
   }
   function pdf() {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 17;
-    const now = new Date();
-    const billNo = 'NX-' + String(now.getTime()).slice(-8);
-    doc.setFillColor(16, 46, 87);
-    doc.rect(0, 0, pageWidth, 57, 'F');
-    doc.setDrawColor(145, 211, 249); doc.setLineWidth(1.1);
-    doc.line(25, 15, 25, 30); doc.line(17, 20, 33, 20);
-    doc.line(19, 20, 14, 31); doc.line(31, 20, 36, 31);
-    doc.line(14, 31, 22, 31); doc.line(28, 31, 36, 31);
-    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(21);
-    doc.text('NEXORA CALC', 43, 22);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(193, 216, 239);
-    doc.text('WEIGHT CALCULATION BILL', 43, 30);
-    doc.setFontSize(9); doc.text('Simple. Accurate. Yours.', 43, 38);
-    doc.setTextColor(255, 255, 255); doc.text('BILL NO.  ' + billNo, pageWidth - margin, 20, { align: 'right' });
-    doc.text(now.toLocaleString('en-IN'), pageWidth - margin, 29, { align: 'right' });
-    doc.setTextColor(29, 55, 82); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
-    doc.text('Weight Summary', margin, 72);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(113, 132, 153);
-    doc.text(entries.length + ' verified weight entries', margin, 79);
-    const tableWidth = pageWidth - margin * 2;
-    let y = 91;
-    doc.setFillColor(235, 243, 251); doc.roundedRect(margin, y - 7, tableWidth, 13, 2, 2, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(40, 78, 115);
-    doc.text('WEIGHT (KG)', margin + 6, y + 1);
-    doc.text('WEIGHT (GRAMS)', pageWidth - margin - 6, y + 1, { align: 'right' });
-    y += 13;
-    entries.forEach((entry, index) => {
-      if (y > 250) { doc.addPage(); y = 25; }
-      if (index % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 6, tableWidth, 12, 'F'); }
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(42, 61, 81);
-      doc.text(String(entry.kg) + ' kg', margin + 6, y + 1);
-      doc.text(String(entry.grams).padStart(3, '0') + ' g', pageWidth - margin - 6, y + 1, { align: 'right' });
-      y += 12;
+    const w = doc.internal.pageSize.getWidth(), m = 16, now = new Date(), tableW = w - 2 * m;
+    const billNo = 'NXD-' + String(now.getTime()).slice(-8);
+    doc.setFillColor(18, 42, 72); doc.rect(0, 0, w, 43, 'F');
+    doc.setFillColor(35, 101, 162); doc.roundedRect(m, 9, 25, 25, 4, 4, 'F');
+    doc.setDrawColor(225, 242, 255); doc.setLineWidth(1.2);
+    doc.line(m+12.5,12,m+12.5,19); doc.line(m+5,19,m+20,19);
+    doc.line(m+7,19,m+4,27); doc.line(m+18,19,m+21,27);
+    doc.line(m+2,27,m+8,27); doc.line(m+17,27,m+23,27);
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(19);
+    doc.text('NEXORA DIGITAL',m+32,19);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(198,216,235);
+    doc.text('WEIGHT RECORD & BILL',m+32,27);
+    doc.setFontSize(8); doc.text('DIGITAL WEIGHT CALCULATION',m+32,33);
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    doc.text('INVOICE',w-m,15,{align:'right'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    doc.text('Bill No: '+billNo,w-m,23,{align:'right'});
+    doc.text('Date: '+now.toLocaleDateString('en-IN'),w-m,30,{align:'right'});
+    let y=55; doc.setTextColor(35,53,73); doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text('BILL TO',m,y); doc.setDrawColor(205,215,226); doc.setLineWidth(.35);
+    doc.line(m,y+2,w-m,y+2); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,105,121);
+    doc.text('Customer Name: __________________________________',m,y+12);
+    doc.text('Phone: __________________________',w-m,y+12,{align:'right'});
+    doc.text('Address: ______________________________________________________________',m,y+22);
+    y=91; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
+    doc.text('WEIGHT DETAILS',m,y); y+=8;
+    doc.setFillColor(235,241,247); doc.rect(m,y-5,tableW,12,'F');
+    doc.setFontSize(8); doc.setTextColor(43,68,94);
+    doc.text('WEIGHT (KG)',m+7,y+2); doc.text('WEIGHT (GRAMS)',w-m-7,y+2,{align:'right'}); y+=12;
+    entries.forEach((entry,index)=>{
+      if(y>245){doc.addPage();y=25;}
+      if(index%2===0){doc.setFillColor(249,251,253);doc.rect(m,y-5,tableW,10,'F');}
+      doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(42,56,72);
+      doc.text(entry.kg+' kg',m+7,y+1);doc.text(String(entry.grams).padStart(3,'0')+' g',w-m-7,y+1,{align:'right'});y+=10;
     });
-    y += 10;
-    if (y > 245) { doc.addPage(); y = 35; }
-    doc.setFillColor(16, 46, 87); doc.roundedRect(margin, y, tableWidth, 36, 4, 4, 'F');
-    doc.setTextColor(190, 215, 238); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-    doc.text('GRAND TOTAL', margin + 8, y + 11);
-    doc.setTextColor(255, 255, 255); doc.setFontSize(22);
-    doc.text(String(sum.totalKg) + ' kg', margin + 8, y + 26);
-    doc.setTextColor(137, 222, 176);
-    doc.text(String(sum.totalGrams).padStart(3, '0') + ' g', pageWidth - margin - 8, y + 26, { align: 'right' });
-    doc.setDrawColor(225, 232, 240); doc.line(margin, 274, pageWidth - margin, 274);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(128, 145, 163);
-    doc.text('Please verify all entries before final use.', pageWidth / 2, 282, { align: 'center' });
-    doc.setFont('helvetica', 'bold'); doc.setTextColor(54, 91, 128);
-    doc.text('NEXORA CALC', margin, 289);
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(145, 157, 170);
-    doc.text('Thank you', pageWidth - margin, 289, { align: 'right' });
-    doc.save('Nexora-Calc-Premium-Bill.pdf');
+    y+=12;if(y>242){doc.addPage();y=35;}
+    doc.setDrawColor(205,215,226);doc.line(m,y,w-m,y);y+=10;
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(35,53,73);doc.text('GRAND TOTAL',m+2,y);
+    doc.setFontSize(18);doc.setTextColor(18,65,110);
+    doc.text(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',w-m-2,y,{align:'right'});
+    y+=24;doc.setDrawColor(145,158,172);doc.line(w-m-48,y,w-m,y);
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(105,119,135);
+    doc.text('Authorized Signature',w-m-24,y+5,{align:'center'});
+    doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
+    doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
+    doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('NEXORA DIGITAL',w/2,291,{align:'center'});
+    doc.save('Nexora-Digital-Weight-Bill.pdf');
   }
   function shareWhatsApp() {
     const lines = entries.map(entry => entry.kg + ' kg ' + String(entry.grams).padStart(3, '0') + ' g').join('\n');
-    const billText = 'NEXORA CALC | WEIGHT BILL\nBill Date: ' + new Date().toLocaleString('en-IN') + '\n\nWEIGHT ENTRIES\n' + lines + '\n\nGRAND TOTAL: ' + sum.totalKg + ' kg ' + String(sum.totalGrams).padStart(3, '0') + ' g\n\nThank you.';
+    const billText = 'NEXORA DIGITAL | WEIGHT BILL\nBill Date: ' + new Date().toLocaleString('en-IN') + '\n\nWEIGHT ENTRIES\n' + lines + '\n\nGRAND TOTAL: ' + sum.totalKg + ' kg ' + String(sum.totalGrams).padStart(3, '0') + ' g\n\nThank you.';
     window.open('https://wa.me/?text=' + encodeURIComponent(billText), '_blank');
   }
   function loadBill(bill: SavedBill) {
@@ -227,14 +230,14 @@ export default function App() {
 
   if (showSplash) return <div className="splash-screen">
     <img src="/nexora-logo.svg" alt="Nexora logo" />
-    <h1>Nexora Digital Calculator</h1>
+    <h1>Nexora Digital</h1>
     <p>Simple. Accurate. Yours.</p>
   </div>;
 
   return <main className="app-shell">
     <header className="topbar">
-      <img className="brand-logo" src="/nexora-logo.svg" alt="Nexora Calc logo" />
-      <div className="brand-copy"><strong>Nexora Calc</strong><small>Handwritten Weight Calculator</small></div>
+      <img className="brand-logo" src="/nexora-logo.svg" alt="Nexora Digital logo" />
+      <div className="brand-copy"><strong>Nexora Digital</strong><small>Weight Calculation & Billing</small></div>
       <button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History /></button>
     </header>
     <section className="hero">
@@ -260,7 +263,7 @@ export default function App() {
     <section className="total-card"><div className="total-top"><span>Total Weight</span><span className="verified"><Check size={14} /> Verified entries</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">{entries.length} entries in total</div></section>
     <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check />Save Bill</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown />PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle />WhatsApp</button></section>
     <button className="clear-button" onClick={() => { setEntries([]); setMessage('Start a new calculation.'); }}><X size={15} /> Start New Calculation</button>
-    <footer>NEXORA CALC <span>•</span> Simple. Accurate. Yours.</footer>
+    <footer>NEXORA DIGITAL <span>•</span> Weight Record & Bill</footer>
     {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
       <div className="modal-head"><div><h2>Select Weight Entries</h2><p>Compare the list with your photo and select the correct weights.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page" /></div>
