@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
+import { Preferences } from '@capacitor/preferences';
+import { Directory, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 type Entry = { id: number; raw: string; kg: number; grams: number };
 type SavedBill = { id: number; date: string; entries: Entry[]; totalKg: number; totalGrams: number };
@@ -102,9 +105,6 @@ function downloadPdfBlob(blob: Blob, fileName: string) {
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
-function readBills(): SavedBill[] {
-  try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { return []; }
-}
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -112,7 +112,7 @@ export default function App() {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Take a photo or choose a page from your gallery.');
-  const [bills, setBills] = useState<SavedBill[]>(readBills);
+  const [bills, setBills] = useState<SavedBill[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
@@ -123,7 +123,8 @@ export default function App() {
   const sum = useMemo(() => total(entries), [entries]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setShowSplash(false), 2000);
+    const timer = window.setTimeout(() => setShowSplash(false), 1600);
+    Preferences.get({ key: STORE }).then(({ value }) => { if (value) setBills(JSON.parse(value) as SavedBill[]); }).catch(() => setMessage('Bill history could not be loaded on this device.'));
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -173,30 +174,18 @@ export default function App() {
     const item = parseEntry(value);
     if (item) setEntries(old => old.map(entry => entry.id === id ? { ...item, id } : entry));
   }
-  function saveBill() {
+  async function saveBill() {
     if (!entries.length) { setMessage('Please add at least one weight before saving.'); return; }
     try {
-      const bill: SavedBill = {
-        id: Date.now(),
-        date: new Date().toLocaleString('en-IN'),
-        entries: entries.map(entry => ({ ...entry })),
-        ...total(entries),
-      };
-      const next = [bill, ...bills.filter(item => item.id !== bill.id)].slice(0, 100);
-      // Update the visible history even if this browser blocks persistent storage.
-      setBills(next);
-      try {
-        localStorage.setItem(STORE, JSON.stringify(next));
-        if (localStorage.getItem(STORE) === null) throw new Error('Storage is unavailable');
-        setMessage('Bill saved successfully. Open History to view it.');
-      } catch {
-        setMessage('Bill saved for this session, but this device blocked permanent storage. Please allow app storage.');
-      }
-    } catch (error) {
-      setMessage('Could not save bill: ' + (error instanceof Error ? error.message : 'Please try again.'));
-    }
+      const bill: SavedBill = { id: Date.now(), date: new Date().toLocaleString('en-IN'), entries: entries.map(entry => ({ ...entry })), ...total(entries) };
+      const next = [bill, ...bills].slice(0, 100);
+      await Preferences.set({ key: STORE, value: JSON.stringify(next) });
+      const check = await Preferences.get({ key: STORE });
+      if (!check.value) throw new Error('Device storage did not confirm the saved bill.');
+      setBills(next); setMessage('Bill permanently saved on this device. Open History to view it.');
+    } catch (error) { setMessage('Bill could not be saved: ' + (error instanceof Error ? error.message : 'Check device storage and try again.')); }
   }
-  function pdf() {
+  async function pdf() {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const w = doc.internal.pageSize.getWidth(), m = 16, now = new Date(), tableW = w - 2 * m;
     const billNo = 'NXD-' + String(now.getTime()).slice(-8);
@@ -245,47 +234,54 @@ export default function App() {
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
     doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('NEXORA DIGITAL',w/2,291,{align:'center'});
     try {
-      const blob = doc.output('blob');
-      const fileName = 'Nexora-Digital-Weight-Bill.pdf';
-      const file = new File([blob], fileName, { type: 'application/pdf' });
-      // Android and mobile browsers may block jsPDF's automatic download.
-      // Prefer the native share sheet when it can accept a PDF, otherwise download via a Blob URL.
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        navigator.share({ files: [file], title: 'Nexora Digital Weight Bill', text: 'Your weight bill from Nexora Digital.' })
-          .then(() => setMessage('PDF bill shared successfully.'))
-          .catch(() => downloadPdfBlob(blob, fileName));
-      } else {
-        downloadPdfBlob(blob, fileName);
-        setMessage('PDF bill generated. Check your Downloads folder.');
-      }
+      const saved = await Filesystem.writeFile({ path: 'Nexora-Digital-Weight-Bill.pdf', data: doc.output('datauristring').split(',')[1], directory: Directory.Cache });
+      await Share.share({ title: 'Nexora Digital Weight Bill', text: 'Your weight bill from Nexora Digital.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
+      setMessage('PDF created. Choose WhatsApp, Drive or Save to Files from the Android share panel.');
     } catch (error) {
-      setMessage('PDF could not be created: ' + (error instanceof Error ? error.message : 'Please try again.'));
+      try { doc.save('Nexora-Digital-Weight-Bill.pdf'); setMessage('PDF generated. Check your Downloads folder.'); }
+      catch { setMessage('PDF could not be saved: ' + (error instanceof Error ? error.message : 'Please try again.')); }
     }
   }
-  function shareWhatsApp() {
-    const lines = entries.map(entry => entry.kg + ' kg ' + String(entry.grams).padStart(3, '0') + ' g').join('\n');
-    const billText = 'NEXORA DIGITAL | WEIGHT BILL\nBill Date: ' + new Date().toLocaleString('en-IN') + '\n\nWEIGHT ENTRIES\n' + lines + '\n\nGRAND TOTAL: ' + sum.totalKg + ' kg ' + String(sum.totalGrams).padStart(3, '0') + ' g\n\nThank you.';
-    window.open('https://wa.me/?text=' + encodeURIComponent(billText), '_blank');
+  async function shareWhatsApp() {
+    try {
+      const canvas = document.createElement('canvas'); canvas.width = 1080; canvas.height = 1450;
+      const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('Could not create bill image.');
+      ctx.fillStyle='#f1f5f9';ctx.fillRect(0,0,1080,1450);ctx.fillStyle='#fff';ctx.fillRect(48,48,984,1354);
+      ctx.fillStyle='#123b70';ctx.fillRect(48,48,984,250);ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(88,96,132,132,24);ctx.fill();
+      ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#fff';ctx.font='bold 48px Arial';ctx.fillText('NEXORA DIGITAL',252,150);
+      ctx.font='24px Arial';ctx.fillStyle='#c9def2';ctx.fillText('WEIGHT RECORD & BILL',254,197);
+      ctx.fillStyle='#243b53';ctx.font='bold 30px Arial';ctx.fillText('BILL DETAILS',92,365);ctx.font='22px Arial';ctx.fillStyle='#64748b';ctx.fillText('Date: '+new Date().toLocaleString('en-IN'),92,410);
+      ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,450);ctx.lineTo(988,450);ctx.stroke();
+      ctx.fillStyle='#eaf0f6';ctx.fillRect(92,475,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,516);ctx.fillText('WEIGHT',360,516);ctx.textAlign='right';ctx.fillText('GRAMS',950,516);ctx.textAlign='left';
+      let y=590;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
+      y=Math.max(y+50,1000);ctx.fillStyle='#123b70';ctx.fillRect(92,y,896,150);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.fillText('GRAND TOTAL',125,y+55);ctx.fillStyle='#fff';ctx.font='bold 52px Arial';ctx.textAlign='right';ctx.fillText(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',950,y+112);ctx.textAlign='left';
+      ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.textAlign='center';ctx.fillText('Thank you for choosing Nexora Digital',540,1335);ctx.textAlign='left';
+      const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Bill image export failed.')),'image/png'));
+      const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Image conversion failed.'));reader.readAsDataURL(blob);});
+      const saved=await Filesystem.writeFile({path:'Nexora-Digital-Weight-Bill.png',data:base64,directory:Directory.Cache});
+      await Share.share({title:'Nexora Digital Bill',text:'Nexora Digital Weight Bill',url:saved.uri,dialogTitle:'Share bill image'});
+      setMessage('Bill image ready. Choose WhatsApp from the Android share panel.');
+    } catch(error) { setMessage('Bill image could not be shared: '+(error instanceof Error?error.message:'Please try again.')); }
   }
   function loadBill(bill: SavedBill) {
     setEntries(bill.entries); setShowHistory(false); setMessage('Previous bill loaded.');
   }
 
   if (showSplash) return <div className="splash-screen">
-    <img src="/nexora-logo.svg" alt="Nexora logo" />
+    <img src="./nexora-logo.svg" alt="Nexora logo" />
     <h1>Nexora Digital</h1>
     <p>Simple. Accurate. Yours.</p>
   </div>;
 
   return <main className="app-shell">
     <header className="topbar">
-      <img className="brand-logo" src="/nexora-logo.svg" alt="Nexora Digital logo" />
+      <img className="brand-logo" src="./nexora-logo.svg" alt="Nexora Digital logo" />
       <div className="brand-copy"><strong>Nexora Digital</strong><small>Weight Calculation & Billing</small></div>
       <button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History /></button>
     </header>
     <section className="hero">
       <div className="hero-copy"><span className="eyebrow">SMART WEIGHT BOOK</span><h1>Weight records,<br />made simple.</h1><p>Scan your page, review the numbers and calculate the total weight.</p></div>
-      <div className="hero-icon"><img src="/nexora-logo.svg" alt="" /></div>
+      <div className="hero-icon"><img src="./nexora-logo.svg" alt="" /></div>
     </section>
     <section className="upload-card">
       <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
