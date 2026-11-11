@@ -117,7 +117,7 @@ export default function App() {
         const result = await worker.recognize(images[index]);
         textParts.push(result.data.text);
       }
-      const found = extractWeightRows(textParts.join('\\n'));
+      const found = extractWeightRows(textParts.join('\n'));
       setPendingEntries(found);
       setSelectedIds(found.map(item => item.id));
       setReviewPhoto(URL.createObjectURL(file));
@@ -217,8 +217,8 @@ export default function App() {
     doc.save('Nexora-Calc-Premium-Bill.pdf');
   }
   function shareWhatsApp() {
-    const lines = entries.map(entry => entry.kg + ' kg ' + String(entry.grams).padStart(3, '0') + ' g').join('\\n');
-    const billText = 'NEXORA CALC | WEIGHT BILL\\nBill Date: ' + new Date().toLocaleString('en-IN') + '\\n\\nWEIGHT ENTRIES\\n' + lines + '\\n\\nGRAND TOTAL: ' + sum.totalKg + ' kg ' + String(sum.totalGrams).padStart(3, '0') + ' g\\n\\nThank you.';
+    const lines = entries.map(entry => entry.kg + ' kg ' + String(entry.grams).padStart(3, '0') + ' g').join('\n');
+    const billText = 'NEXORA CALC | WEIGHT BILL\nBill Date: ' + new Date().toLocaleString('en-IN') + '\n\nWEIGHT ENTRIES\n' + lines + '\n\nGRAND TOTAL: ' + sum.totalKg + ' kg ' + String(sum.totalGrams).padStart(3, '0') + ' g\n\nThank you.';
     window.open('https://wa.me/?text=' + encodeURIComponent(billText), '_blank');
   }
   function loadBill(bill: SavedBill) {
