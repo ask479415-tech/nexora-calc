@@ -19,7 +19,7 @@ function extractWeightRows(ocrText: string): Entry[] {
     // Remove a leading serial number before reading the actual weight.
     const withoutSerial = cleaned
       .replace(/^(?:sl\.?\s*no\.?|serial\s*no\.?|ক্রমিক\s*নং)\s*\d{1,3}\s*[:.)-]?\s*/i, '')
-      .replace(/^\d{1,3}\s*[.)-]\s*(?=\d{1,3}\s*[,.:/\-])/,'')
+      .replace(/^\d{1,3}\s*[,.)-]\s*(?=\d{1,3}\s*[,.:/\-])/,'')
       .replace(/^\d{1,3}\s+(?=\d{1,3}\s*[,.:/\-])/,'');
     const match = withoutSerial.match(/^(\d{1,3})\s*[,.:/\-]\s*(\d{1,3})$/)
       || withoutSerial.match(/^(\d{1,3})\s+(\d{3})$/);
