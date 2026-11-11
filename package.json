@@ -13,7 +13,10 @@
     "@capacitor/core": "^7.4.3",
     "jspdf": "^3.0.3",
     "lucide-react": "^0.468.0",
-    "tesseract.js": "^6.0.1"
+    "tesseract.js": "^6.0.1",
+    "@capacitor/preferences": "^7.0.2",
+    "@capacitor/filesystem": "^7.1.4",
+    "@capacitor/share": "^7.0.2"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
