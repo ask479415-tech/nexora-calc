@@ -10,14 +10,14 @@ const STORE = 'nexora-calc-bills-v1';
 function extractWeightRows(ocrText: string): Entry[] {
   const rows: Entry[] = [];
   const normalized = digits(ocrText);
-  for (const line of normalized.split(/\\r?\\n/)) {
+  for (const line of normalized.split(/\r?\n/)) {
     const cleaned = line.trim()
-      .replace(/^[•*\\-–—]+\\s*/, '')
-      .replace(/\\b(?:kg|kgs|gram|grams|gm|g)\\b|কেজি|গ্রাম/gi, '')
+      .replace(/^[•*\-–—]+\s*/, '')
+      .replace(/\b(?:kg|kgs|gram|grams|gm|g)\b|কেজি|গ্রাম/gi, '')
       .trim();
     if (!cleaned || /total|মোট|তারিখ|date|phone|mobile|পৃষ্ঠা|page/i.test(cleaned)) continue;
-    const match = cleaned.match(/^(?:\\d{1,3}[.)]\\s*)?(\\d{1,3})\\s*[,.:/\\-]\\s*(\\d{1,3})$/)
-      || cleaned.match(/^(?:\\d{1,3}[.)]\\s*)?(\\d{1,3})\\s+(\\d{3})$/);
+    const match = cleaned.match(/^(?:\d{1,3}[.)]\s*)?(\d{1,3})\s*[,.:/\-]\s*(\d{1,3})$/)
+      || cleaned.match(/^(?:\d{1,3}[.)]\s*)?(\d{1,3})\s+(\d{3})$/);
     if (!match) continue;
     const kg = Number(match[1]);
     const grams = Number(match[2].padEnd(3, '0'));
@@ -26,7 +26,6 @@ function extractWeightRows(ocrText: string): Entry[] {
   }
   return rows;
 }
-
 function digits(s: string) {
   return s.replace(/[০-৯]/g, d => String('০১২৩৪৫৬৭৮৯'.indexOf(d)))
     .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
