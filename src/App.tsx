@@ -113,7 +113,7 @@ export default function App() {
       const images = await makeOcrImages(file);
       const textParts: string[] = [];
       for (let index = 0; index < images.length; index++) {
-        await worker.setParameters({ tessedit_pageseg_mode: index === 0 ? '11' : '6' });
+        await worker.setParameters({ tessedit_pageseg_mode: index === 0 ? 11 : 6 });
         const result = await worker.recognize(images[index]);
         textParts.push(result.data.text);
       }
@@ -161,18 +161,64 @@ export default function App() {
     setMessage('Bill saved to history.');
   }
   function pdf() {
-    const doc = new jsPDF();
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.text('NEXORA CALC', 18, 20);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.text('Weight Calculation Bill', 18, 28);
-    doc.text('Date: ' + new Date().toLocaleString('en-IN'), 18, 38);
-    let y = 52;
-    entries.forEach(entry => { doc.text(entry.kg + ' kg ' + entry.grams + ' g', 20, y); y += 9; });
-    doc.setFont('helvetica', 'bold'); doc.text('TOTAL: ' + sum.totalKg + ' kg ' + sum.totalGrams + ' g', 18, y + 8);
-    doc.save('Nexora-Calc-Bill.pdf');
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 17;
+    const now = new Date();
+    const billNo = 'NX-' + String(now.getTime()).slice(-8);
+    doc.setFillColor(16, 46, 87);
+    doc.rect(0, 0, pageWidth, 57, 'F');
+    doc.setDrawColor(145, 211, 249); doc.setLineWidth(1.1);
+    doc.line(25, 15, 25, 30); doc.line(17, 20, 33, 20);
+    doc.line(19, 20, 14, 31); doc.line(31, 20, 36, 31);
+    doc.line(14, 31, 22, 31); doc.line(28, 31, 36, 31);
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(21);
+    doc.text('NEXORA CALC', 43, 22);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(193, 216, 239);
+    doc.text('WEIGHT CALCULATION BILL', 43, 30);
+    doc.setFontSize(9); doc.text('Simple. Accurate. Yours.', 43, 38);
+    doc.setTextColor(255, 255, 255); doc.text('BILL NO.  ' + billNo, pageWidth - margin, 20, { align: 'right' });
+    doc.text(now.toLocaleString('en-IN'), pageWidth - margin, 29, { align: 'right' });
+    doc.setTextColor(29, 55, 82); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+    doc.text('Weight Summary', margin, 72);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(113, 132, 153);
+    doc.text(entries.length + ' verified weight entries', margin, 79);
+    const tableWidth = pageWidth - margin * 2;
+    let y = 91;
+    doc.setFillColor(235, 243, 251); doc.roundedRect(margin, y - 7, tableWidth, 13, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(40, 78, 115);
+    doc.text('WEIGHT (KG)', margin + 6, y + 1);
+    doc.text('WEIGHT (GRAMS)', pageWidth - margin - 6, y + 1, { align: 'right' });
+    y += 13;
+    entries.forEach((entry, index) => {
+      if (y > 250) { doc.addPage(); y = 25; }
+      if (index % 2 === 0) { doc.setFillColor(249, 251, 253); doc.rect(margin, y - 6, tableWidth, 12, 'F'); }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(42, 61, 81);
+      doc.text(String(entry.kg) + ' kg', margin + 6, y + 1);
+      doc.text(String(entry.grams).padStart(3, '0') + ' g', pageWidth - margin - 6, y + 1, { align: 'right' });
+      y += 12;
+    });
+    y += 10;
+    if (y > 245) { doc.addPage(); y = 35; }
+    doc.setFillColor(16, 46, 87); doc.roundedRect(margin, y, tableWidth, 36, 4, 4, 'F');
+    doc.setTextColor(190, 215, 238); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text('GRAND TOTAL', margin + 8, y + 11);
+    doc.setTextColor(255, 255, 255); doc.setFontSize(22);
+    doc.text(String(sum.totalKg) + ' kg', margin + 8, y + 26);
+    doc.setTextColor(137, 222, 176);
+    doc.text(String(sum.totalGrams).padStart(3, '0') + ' g', pageWidth - margin - 8, y + 26, { align: 'right' });
+    doc.setDrawColor(225, 232, 240); doc.line(margin, 274, pageWidth - margin, 274);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(128, 145, 163);
+    doc.text('Please verify all entries before final use.', pageWidth / 2, 282, { align: 'center' });
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(54, 91, 128);
+    doc.text('NEXORA CALC', margin, 289);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(145, 157, 170);
+    doc.text('Thank you', pageWidth - margin, 289, { align: 'right' });
+    doc.save('Nexora-Calc-Premium-Bill.pdf');
   }
   function shareWhatsApp() {
-    const lines = entries.map(entry => entry.kg + ' kg ' + entry.grams + ' g').join('\n');
-    const billText = 'NEXORA CALC BILL\n' + lines + '\n----------------\nTOTAL: ' + sum.totalKg + ' kg ' + sum.totalGrams + ' g';
+    const lines = entries.map(entry => entry.kg + ' kg ' + String(entry.grams).padStart(3, '0') + ' g').join('\\n');
+    const billText = 'NEXORA CALC | WEIGHT BILL\\nBill Date: ' + new Date().toLocaleString('en-IN') + '\\n\\nWEIGHT ENTRIES\\n' + lines + '\\n\\nGRAND TOTAL: ' + sum.totalKg + ' kg ' + String(sum.totalGrams).padStart(3, '0') + ' g\\n\\nThank you.';
     window.open('https://wa.me/?text=' + encodeURIComponent(billText), '_blank');
   }
   function loadBill(bill: SavedBill) {
