@@ -7,7 +7,8 @@ import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 type Entry = { id: number; raw: string; kg: number; grams: number };
-type SavedBill = { id: number; date: string; entries: Entry[]; totalKg: number; totalGrams: number };
+type Customer = { name: string; address: string; phone: string };
+type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number };
 const STORE = 'nexora-calc-bills-v1';
 
 function extractWeightRows(ocrText: string): Entry[] {
@@ -109,6 +110,7 @@ function downloadPdfBlob(blob: Blob, fileName: string) {
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [customer, setCustomer] = useState<Customer>({ name: '', address: '', phone: '' });
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Take a photo or choose a page from your gallery.');
@@ -177,7 +179,7 @@ export default function App() {
   async function saveBill() {
     if (!entries.length) { setMessage('Please add at least one weight before saving.'); return; }
     try {
-      const bill: SavedBill = { id: Date.now(), date: new Date().toLocaleString('en-IN'), entries: entries.map(entry => ({ ...entry })), ...total(entries) };
+      const bill: SavedBill = { id: Date.now(), date: new Date().toLocaleString('en-IN'), customer: { ...customer }, entries: entries.map(entry => ({ ...entry })), ...total(entries) };
       const next = [bill, ...bills].slice(0, 100);
       await Preferences.set({ key: STORE, value: JSON.stringify(next) });
       const check = await Preferences.get({ key: STORE });
@@ -208,9 +210,14 @@ export default function App() {
     let y=55; doc.setTextColor(35,53,73); doc.setFont('helvetica','bold'); doc.setFontSize(10);
     doc.text('BILL TO',m,y); doc.setDrawColor(205,215,226); doc.setLineWidth(.35);
     doc.line(m,y+2,w-m,y+2); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,105,121);
-    doc.text('Customer Name: __________________________________',m,y+12);
-    doc.text('Phone: __________________________',w-m,y+12,{align:'right'});
-    doc.text('Address: ______________________________________________________________',m,y+22);
+    doc.setTextColor(35,53,73); doc.setFont('helvetica','bold');
+    doc.text('Customer:',m,y+12); doc.setFont('helvetica','normal');
+    doc.text(customer.name.trim() || 'Walk-in Customer',m+25,y+12);
+    doc.setFont('helvetica','bold'); doc.text('Phone:',w-m-57,y+12); doc.setFont('helvetica','normal');
+    doc.text(customer.phone.trim() || '—',w-m,y+12,{align:'right'});
+    doc.setFont('helvetica','bold'); doc.text('Address:',m,y+22); doc.setFont('helvetica','normal');
+    const addressLines = doc.splitTextToSize(customer.address.trim() || '—', tableW-22);
+    doc.text(addressLines.slice(0,2),m+19,y+22);
     y=91; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
     doc.text('WEIGHT DETAILS',m,y); y+=8;
     doc.setFillColor(235,241,247); doc.rect(m,y-5,tableW,12,'F');
@@ -227,9 +234,10 @@ export default function App() {
     doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(35,53,73);doc.text('GRAND TOTAL',m+2,y);
     doc.setFontSize(18);doc.setTextColor(18,65,110);
     doc.text(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',w-m-2,y,{align:'right'});
-    y+=24;doc.setDrawColor(145,158,172);doc.line(w-m-48,y,w-m,y);
-    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(105,119,135);
-    doc.text('Sign by Nexora Digital',w-m-24,y+5,{align:'center'});
+    y+=24; doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(18,65,110);
+    doc.text('Nexora',w-m-24,y+3,{align:'center'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(105,119,135);
+    doc.text('Authorised Signature',w-m-24,y+9,{align:'center'});
     doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
     doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('NEXORA DIGITAL',w/2,291,{align:'center'});
@@ -250,12 +258,12 @@ export default function App() {
       ctx.fillStyle='#123b70';ctx.fillRect(48,48,984,250);ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(88,96,132,132,24);ctx.fill();
       ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#fff';ctx.font='bold 48px Arial';ctx.fillText('NEXORA DIGITAL',252,150);
       ctx.font='24px Arial';ctx.fillStyle='#c9def2';ctx.fillText('WEIGHT RECORD & BILL',254,197);
-      ctx.fillStyle='#243b53';ctx.font='bold 30px Arial';ctx.fillText('BILL DETAILS',92,365);ctx.font='22px Arial';ctx.fillStyle='#64748b';ctx.fillText('Date: '+new Date().toLocaleString('en-IN'),92,410);
-      ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,450);ctx.lineTo(988,450);ctx.stroke();
-      ctx.fillStyle='#eaf0f6';ctx.fillRect(92,475,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,516);ctx.fillText('WEIGHT',360,516);ctx.textAlign='right';ctx.fillText('GRAMS',950,516);ctx.textAlign='left';
-      let y=590;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
+      ctx.fillStyle='#243b53';ctx.font='bold 30px Arial';ctx.fillText('BILL DETAILS',92,365);ctx.font='22px Arial';ctx.fillStyle='#64748b';ctx.fillText('Date: '+new Date().toLocaleString('en-IN'),92,410);ctx.fillStyle='#243b53';ctx.font='bold 22px Arial';ctx.fillText('Customer: '+(customer.name.trim()||'Walk-in Customer'),92,450);ctx.font='21px Arial';ctx.fillText('Phone: '+(customer.phone.trim()||'—'),92,485);ctx.fillText('Address: '+(customer.address.trim()||'—').slice(0,75),92,520);
+      ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,545);ctx.lineTo(988,545);ctx.stroke();
+      ctx.fillStyle='#eaf0f6';ctx.fillRect(92,565,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,606);ctx.fillText('WEIGHT',360,606);ctx.textAlign='right';ctx.fillText('GRAMS',950,606);ctx.textAlign='left';
+      let y=680;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
       y=Math.max(y+50,1000);ctx.fillStyle='#123b70';ctx.fillRect(92,y,896,150);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.fillText('GRAND TOTAL',125,y+55);ctx.fillStyle='#fff';ctx.font='bold 52px Arial';ctx.textAlign='right';ctx.fillText(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',950,y+112);ctx.textAlign='left';
-      ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.textAlign='center';ctx.fillText('Thank you for choosing Nexora Digital',540,1335);ctx.textAlign='left';
+      ctx.fillStyle='#123b70';ctx.font='bold 34px Arial';ctx.textAlign='center';ctx.fillText('Nexora',540,1285);ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.fillText('Authorised Signature',540,1320);ctx.fillText('Thank you for choosing Nexora Digital',540,1360);ctx.textAlign='left';
       const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Bill image export failed.')),'image/png'));
       const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Image conversion failed.'));reader.readAsDataURL(blob);});
       const saved=await Filesystem.writeFile({path:'Nexora-Digital-Weight-Bill.png',data:base64,directory:Directory.Cache});
@@ -264,7 +272,7 @@ export default function App() {
     } catch(error) { setMessage('Bill image could not be shared: '+(error instanceof Error?error.message:'Please try again.')); }
   }
   function loadBill(bill: SavedBill) {
-    setEntries(bill.entries); setShowHistory(false); setMessage('Previous bill loaded.');
+    setEntries(bill.entries); setCustomer(bill.customer || { name: '', address: '', phone: '' }); setShowHistory(false); setMessage('Previous bill loaded.');
   }
 
   if (showSplash) return <div className="splash-screen">
@@ -298,6 +306,19 @@ export default function App() {
       <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
       {entries.length === 0 ? <div className="empty-state">No weight entries added yet.</div> : <div className="entry-list">{entries.map(entry => <div className="entry-row" key={entry.id}>{editing === entry.id ? <input autoFocus defaultValue={entry.raw} onBlur={event => { updateEntry(entry.id, event.target.value); setEditing(null); }} onKeyDown={event => { if (event.key === 'Enter') { updateEntry(entry.id, event.currentTarget.value); setEditing(null); } }} /> : <strong>{entry.kg} <small>kg</small> {entry.grams} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(entry.id)} aria-label="Edit"><Pencil size={16} /></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(item => item.id !== entry.id))} aria-label="Delete"><Trash2 size={16} /></button></div>)}</div>}
       <div className="add-row"><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && addEntry()} placeholder="Add a weight, e.g. 44,100" /><button onClick={addEntry} aria-label="Add"><Plus /></button></div>
+    </section>
+    <section className="customer-card">
+      <div className="section-heading"><div><span className="step">03</span><h2>Customer details</h2></div><span className="count">Live preview</span></div>
+      <label>Customer Name<input value={customer.name} onChange={event => setCustomer(old => ({ ...old, name: event.target.value }))} placeholder="Enter customer name" /></label>
+      <label>Phone Number<input type="tel" inputMode="tel" value={customer.phone} onChange={event => setCustomer(old => ({ ...old, phone: event.target.value }))} placeholder="Enter phone number" /></label>
+      <label>Address<textarea rows={2} value={customer.address} onChange={event => setCustomer(old => ({ ...old, address: event.target.value }))} placeholder="Enter customer address" /></label>
+    </section>
+    <section className="bill-preview">
+      <div className="preview-top"><div><span className="eyebrow">NEXORA DIGITAL</span><h2>Bill Preview</h2></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
+      <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim() || 'Customer address will appear here'}</p></div>
+      <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
+      <div className="preview-total"><span>Grand Total</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div>
+      <div className="preview-sign"><strong>Nexora</strong><small>Authorised Signature</small></div>
     </section>
     <section className="total-card"><div className="total-top"><span>Total Weight</span><span className="verified"><Check size={14} /> Verified entries</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">{entries.length} entries in total</div></section>
     <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check />Save Bill</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown />PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle />WhatsApp</button></section>
