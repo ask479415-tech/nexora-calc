@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, Scale, RefreshCw, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
 
@@ -9,18 +9,13 @@ const STORE = 'nexora-calc-bills-v1';
 
 function extractWeightRows(ocrText: string): Entry[] {
   const rows: Entry[] = [];
-  const normalized = digits(ocrText);
-  for (const line of normalized.split(/\r?\n/)) {
-    const cleaned = line.trim()
-      .replace(/^[•*\-–—]+\s*/, '')
-      .replace(/\b(?:kg|kgs|gram|grams|gm|g)\b|কেজি|গ্রাম/gi, '')
-      .trim();
-    if (!cleaned || /total|মোট|তারিখ|date|phone|mobile|পৃষ্ঠা|page/i.test(cleaned)) continue;
-    // Remove a leading serial number before reading the actual weight.
+  for (const line of ocrText.split(/\r?\n/)) {
+    const cleaned = line.trim().replace(/^[•*\-–—]+\s*/, '').replace(/\b(?:kg|kgs|gram|grams|gm|g)\b/gi, '').trim();
+    if (!cleaned || /total|date|phone|mobile|page|invoice|bill/i.test(cleaned)) continue;
     const withoutSerial = cleaned
-      .replace(/^(?:sl\.?\s*no\.?|serial\s*no\.?|ক্রমিক\s*নং)\s*\d{1,3}\s*[:.)-]?\s*/i, '')
-      .replace(/^\d{1,3}\s*[,.)-]\s*(?=\d{1,3}\s*[,.:/\-])/,'')
-      .replace(/^\d{1,3}\s+(?=\d{1,3}\s*[,.:/\-])/,'');
+      .replace(/^(?:sl\.?\s*no\.?|serial\s*no\.?)\s*\d{1,3}\s*[:.)-]?\s*/i, '')
+      .replace(/^\d{1,3}\s*[,.)-]\s*(?=\d{1,3}\s*[,.:/\-])/, '')
+      .replace(/^\d{1,3}\s+(?=\d{1,3}\s*[,.:/\-])/, '');
     const match = withoutSerial.match(/^(\d{1,3})\s*[,.:/\-]\s*(\d{1,3})$/)
       || withoutSerial.match(/^(\d{1,3})\s+(\d{3})$/);
     if (!match) continue;
@@ -31,10 +26,8 @@ function extractWeightRows(ocrText: string): Entry[] {
   }
   return rows;
 }
-function digits(s: string) {
-  return s.replace(/[০-৯]/g, d => String('০১২৩৪৫৬৭৮৯'.indexOf(d)))
-    .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
-    .replace(/[，]/g, ',').replace(/[.]/g, ',');
+function digits(value: string) {
+  return value.replace(/[，.]/g, ',');
 }
 function parseEntry(value: string): Entry | null {
   const clean = digits(value).replace(/[^0-9,]/g, '');
@@ -42,11 +35,11 @@ function parseEntry(value: string): Entry | null {
   if (!match) return null;
   const kg = Number(match[1]);
   const grams = match[2] ? Number(match[2].padEnd(3, '0')) : 0;
-  if (grams > 999) return null;
+  if (kg < 1 || grams > 999) return null;
   return { id: Date.now() + Math.random(), raw: value, kg, grams };
 }
 function total(entries: Entry[]) {
-  const grams = entries.reduce((sum, e) => sum + e.kg * 1000 + e.grams, 0);
+  const grams = entries.reduce((sum, entry) => sum + entry.kg * 1000 + entry.grams, 0);
   return { totalKg: Math.floor(grams / 1000), totalGrams: grams % 1000 };
 }
 function readBills(): SavedBill[] {
@@ -54,10 +47,11 @@ function readBills(): SavedBill[] {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('ছবি তুলুন অথবা গ্যালারি থেকে খাতা নির্বাচন করুন');
+  const [message, setMessage] = useState('Take a photo or choose a page from your gallery.');
   const [bills, setBills] = useState<SavedBill[]>(readBills);
   const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
@@ -68,23 +62,29 @@ export default function App() {
   const galleryRef = useRef<HTMLInputElement>(null);
   const sum = useMemo(() => total(entries), [entries]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowSplash(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   async function scan(file?: File) {
     if (!file) return;
-    setBusy(true); setMessage('বাংলা ও ইংরেজি OCR দিয়ে ছবি পড়া হচ্ছে… প্রথমবার ভাষার ফাইল ডাউনলোড হতে ইন্টারনেট লাগতে পারে।');
+    setBusy(true);
+    setMessage('Reading handwriting with English OCR...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
-      worker = await createWorker('eng+ben');
+      worker = await createWorker('eng');
       const result = await worker.recognize(file);
       const found = extractWeightRows(result.data.text);
       setPendingEntries(found);
       setSelectedIds(found.map(item => item.id));
       setReviewPhoto(URL.createObjectURL(file));
       setMessage(found.length
-        ? found.length + 'টি সম্ভাব্য ওজন পাওয়া গেছে। ছবি ও তালিকা মিলিয়ে প্রয়োজনীয় লাইন বেছে নিন।'
-        : 'ছবি খোলা হয়েছে, কিন্তু পরিষ্কার ওজন পাওয়া যায়নি। আবার ছবি তুলুন অথবা হাতে লিখুন।');
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : '';
-      setMessage(reason || 'OCR চালানো যায়নি। প্রথমবার হলে ইন্টারনেট চালু করে আবার চেষ্টা করুন।');
+        ? found.length + ' possible weight entries found. Check the photo and select the correct rows.'
+        : 'The photo is open, but no clear weight entries were detected. You can add them manually.');
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : '';
+      setMessage(reason || 'OCR could not run. Connect to the internet and try again.');
     } finally {
       if (worker) await worker.terminate();
       setBusy(false);
@@ -94,86 +94,92 @@ export default function App() {
     const chosen = pendingEntries.filter(item => selectedIds.includes(item.id));
     setEntries(chosen);
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null);
-    setPendingEntries([]);
-    setSelectedIds([]);
-    setMessage(chosen.length + 'টি নির্বাচিত ওজন দিয়ে হিসাব তৈরি হয়েছে।');
+    setReviewPhoto(null); setPendingEntries([]); setSelectedIds([]);
+    setMessage(chosen.length + ' selected entries are ready for calculation.');
   }
   function cancelPhotoReview() {
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null);
-    setPendingEntries([]);
-    setSelectedIds([]);
-    setMessage('ছবি নির্বাচন বাতিল হয়েছে।');
+    setReviewPhoto(null); setPendingEntries([]); setSelectedIds([]);
+    setMessage('Photo selection cancelled.');
   }
   function addEntry() {
     const item = parseEntry(draft);
-    if (!item) { setMessage('উদাহরণ: 44,100 অথবা 39,300 লিখুন।'); return; }
+    if (!item) { setMessage('Enter a weight like 44,100 or 39,300.'); return; }
     setEntries(old => [...old, item]); setDraft('');
   }
   function updateEntry(id: number, value: string) {
     const item = parseEntry(value);
-    if (item) setEntries(old => old.map(e => e.id === id ? { ...item, id } : e));
+    if (item) setEntries(old => old.map(entry => entry.id === id ? { ...item, id } : entry));
   }
   function saveBill() {
     if (!entries.length) return;
-    const bill = { id: Date.now(), date: new Date().toLocaleString('bn-BD'), entries, ...sum };
+    const bill = { id: Date.now(), date: new Date().toLocaleString('en-IN'), entries, ...sum };
     const next = [bill, ...bills].slice(0, 100);
     setBills(next); localStorage.setItem(STORE, JSON.stringify(next));
-    setMessage('বিল হিস্ট্রিতে সেভ হয়েছে।');
+    setMessage('Bill saved to history.');
   }
   function pdf() {
     const doc = new jsPDF();
     doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.text('NEXORA CALC', 18, 20);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.text('Weight calculation bill', 18, 28);
-    doc.text('Date: ' + new Date().toLocaleString(), 18, 38);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.text('Weight Calculation Bill', 18, 28);
+    doc.text('Date: ' + new Date().toLocaleString('en-IN'), 18, 38);
     let y = 52;
-    entries.forEach(e => { doc.text(e.kg + ' kg ' + e.grams + ' g', 20, y); y += 9; });
+    entries.forEach(entry => { doc.text(entry.kg + ' kg ' + entry.grams + ' g', 20, y); y += 9; });
     doc.setFont('helvetica', 'bold'); doc.text('TOTAL: ' + sum.totalKg + ' kg ' + sum.totalGrams + ' g', 18, y + 8);
     doc.save('Nexora-Calc-Bill.pdf');
   }
   function shareWhatsApp() {
-    const lines = entries.map(e => e.kg + ' kg ' + e.grams + ' g').join('\n');
-    const text = 'NEXORA CALC BILL\n' + lines + '\n----------------\nTOTAL: ' + sum.totalKg + ' kg ' + sum.totalGrams + ' g';
-    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+    const lines = entries.map(entry => entry.kg + ' kg ' + entry.grams + ' g').join('\n');
+    const billText = 'NEXORA CALC BILL\n' + lines + '\n----------------\nTOTAL: ' + sum.totalKg + ' kg ' + sum.totalGrams + ' g';
+    window.open('https://wa.me/?text=' + encodeURIComponent(billText), '_blank');
   }
-  function loadBill(bill: SavedBill) { setEntries(bill.entries); setShowHistory(false); setMessage('পুরোনো হিসাব খোলা হয়েছে।'); }
+  function loadBill(bill: SavedBill) {
+    setEntries(bill.entries); setShowHistory(false); setMessage('Previous bill loaded.');
+  }
+
+  if (showSplash) return <div className="splash-screen">
+    <img src="/nexora-logo.svg" alt="Nexora logo" />
+    <h1>Nexora Digital Calculator</h1>
+    <p>Simple. Accurate. Yours.</p>
+  </div>;
 
   return <main className="app-shell">
-    <header className="topbar"><div className="brand-mark"><Scale size={23}/></div><div><strong>Nexora Calc</strong><small>হাতের লেখার ওজন ক্যালকুলেটর</small></div><button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History/></button></header>
-    <section className="hero"><div className="hero-copy"><span className="eyebrow">SMART WEIGHT BOOK</span><h1>ওজনের হিসাব,<br/>এখন আরও সহজ</h1><p>খাতার ছবি তুলুন, সংখ্যাগুলো যাচাই করুন, মোট ওজন বের করুন।</p></div><div className="hero-icon"><Scale size={58}/></div></section>
+    <header className="topbar">
+      <img className="brand-logo" src="/nexora-logo.svg" alt="Nexora Calc logo" />
+      <div className="brand-copy"><strong>Nexora Calc</strong><small>Handwritten Weight Calculator</small></div>
+      <button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History /></button>
+    </header>
+    <section className="hero">
+      <div className="hero-copy"><span className="eyebrow">SMART WEIGHT BOOK</span><h1>Weight records,<br />made simple.</h1><p>Scan your page, review the numbers and calculate the total weight.</p></div>
+      <div className="hero-icon"><img src="/nexora-logo.svg" alt="" /></div>
+    </section>
     <section className="upload-card">
-      <div className="section-heading"><div><span className="step">01</span><h2>খাতার ছবি দিন</h2></div><span className="offline-tag">OFFLINE OCR</span></div>
+      <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
       <div className="upload-actions">
-        <button className="primary-action" onClick={() => cameraRef.current?.click()} disabled={busy}><Camera/>ক্যামেরা</button>
-        <button className="secondary-action" onClick={() => galleryRef.current?.click()} disabled={busy}><ImagePlus/>গ্যালারি</button>
+        <button className="primary-action" onClick={() => cameraRef.current?.click()} disabled={busy}><Camera />Camera</button>
+        <button className="secondary-action" onClick={() => galleryRef.current?.click()} disabled={busy}><ImagePlus />Gallery</button>
       </div>
-      <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={e => scan(e.target.files?.[0])}/>
-      <input ref={galleryRef} hidden type="file" accept="image/*" onChange={e => scan(e.target.files?.[0])}/>
-      <p className="status-line">{busy && <RefreshCw className="spin" size={15}/>} {message}</p>
-      <p className="hint">উদাহরণ: 44,100 = ৪৪ কেজি ১০০ গ্রাম। প্রথমবার বাংলা ও ইংরেজি ভাষার ফাইল ডাউনলোডে ইন্টারনেট লাগবে; পরে ক্যাশে থাকলে অফলাইনেও চলবে। হিসাবের আগে প্রতিটি ওজন যাচাই করুন।</p>
+      <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={event => scan(event.target.files?.[0])} />
+      <input ref={galleryRef} hidden type="file" accept="image/*" onChange={event => scan(event.target.files?.[0])} />
+      <p className="status-line">{busy && <RefreshCw className="spin" size={15} />} {message}</p>
+      <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs an internet connection to download English OCR data. Always check the detected entries before calculating.</p>
     </section>
     <section className="entries-card">
-      <div className="section-heading"><div><span className="step">02</span><h2>সংখ্যা যাচাই করুন</h2></div><span className="count">{entries.length} লাইন</span></div>
-      {entries.length === 0 ? <div className="empty-state">এখনও কোনো ওজন যোগ হয়নি</div> : <div className="entry-list">{entries.map(e => <div className="entry-row" key={e.id}>{editing === e.id ? <input autoFocus defaultValue={e.raw} onBlur={ev => { updateEntry(e.id, ev.target.value); setEditing(null); }} onKeyDown={ev => { if (ev.key === 'Enter') { updateEntry(e.id, ev.currentTarget.value); setEditing(null); } }}/> : <strong>{e.kg} <small>kg</small> {e.grams} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(e.id)} aria-label="Edit"><Pencil size={16}/></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(x => x.id !== e.id))} aria-label="Delete"><Trash2 size={16}/></button></div>)}</div>}
-      <div className="add-row"><input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && addEntry()} placeholder="নতুন ওজন লিখুন, যেমন 44,100"/><button onClick={addEntry} aria-label="Add"><Plus/></button></div>
+      <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
+      {entries.length === 0 ? <div className="empty-state">No weight entries added yet.</div> : <div className="entry-list">{entries.map(entry => <div className="entry-row" key={entry.id}>{editing === entry.id ? <input autoFocus defaultValue={entry.raw} onBlur={event => { updateEntry(entry.id, event.target.value); setEditing(null); }} onKeyDown={event => { if (event.key === 'Enter') { updateEntry(entry.id, event.currentTarget.value); setEditing(null); } }} /> : <strong>{entry.kg} <small>kg</small> {entry.grams} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(entry.id)} aria-label="Edit"><Pencil size={16} /></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(item => item.id !== entry.id))} aria-label="Delete"><Trash2 size={16} /></button></div>)}</div>}
+      <div className="add-row"><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && addEntry()} placeholder="Add a weight, e.g. 44,100" /><button onClick={addEntry} aria-label="Add"><Plus /></button></div>
     </section>
-    <section className="total-card"><div className="total-top"><span>মোট ওজন</span><span className="verified"><Check size={14}/> যাচাইয়ের পর</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">মোট {entries.length}টি এন্ট্রি</div></section>
-    <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check/>সেভ করুন</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown/>PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle/>WhatsApp</button></section>
-    <button className="clear-button" onClick={() => { setEntries([]); setMessage('নতুন হিসাব শুরু করুন।'); }}> <X size={15}/> নতুন হিসাব শুরু</button>
-    <footer> NEXORA CALC <span>•</span> Simple. Accurate. Yours.</footer>
-    {reviewPhoto && <div className="modal-backdrop review-backdrop">
-      <div className="review-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><div><h2>ছবি ও ওজন বাছাই</h2><p>ছবির সঙ্গে মিলিয়ে প্রয়োজনীয় ওজনগুলো টিক দিয়ে বেছে নিন</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X/></button></div>
-        <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page"/></div>
-        <div className="review-tools"><strong>ছবি থেকে পাওয়া ওজন: {pendingEntries.length}টি</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>সব নির্বাচন</button><button type="button" onClick={() => setSelectedIds([])}>সব বাদ</button></div>
-        {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <label className="review-row" key={item.id}>
-          <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={e => setSelectedIds(old => e.target.checked ? [...old,item.id] : old.filter(id => id !== item.id))}/>
-          <b>{item.kg},{String(item.grams).padStart(3,'0')}</b><small>{item.kg} kg {item.grams} g</small>
-        </label>)}</div> : <div className="empty-state">কোনো ওজন পড়া যায়নি। ছবি দেখে পরে হাতে যোগ করতে পারবেন।</div>}
-        <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>বাতিল</button><button className="primary-action" onClick={confirmPhotoSelection}><Check/> OK — নির্বাচিত হিসাব</button></div>
-      </div>
-    </div>}
-    {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={e => e.stopPropagation()}><div className="modal-head"><h2>আগের হিসাব</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X/></button></div>{bills.length ? bills.map(b => <button className="history-item" key={b.id} onClick={() => loadBill(b)}><span><b>{b.totalKg} kg {b.totalGrams} g</b><small>{b.date}</small></span><span>{b.entries.length} লাইন →</span></button>) : <p className="empty-state">কোনো হিস্ট্রি নেই</p>}</div></div>}
+    <section className="total-card"><div className="total-top"><span>Total Weight</span><span className="verified"><Check size={14} /> Verified entries</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">{entries.length} entries in total</div></section>
+    <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check />Save Bill</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown />PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle />WhatsApp</button></section>
+    <button className="clear-button" onClick={() => { setEntries([]); setMessage('Start a new calculation.'); }}><X size={15} /> Start New Calculation</button>
+    <footer>NEXORA CALC <span>•</span> Simple. Accurate. Yours.</footer>
+    {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
+      <div className="modal-head"><div><h2>Select Weight Entries</h2><p>Compare the list with your photo and select the correct weights.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
+      <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page" /></div>
+      <div className="review-tools"><strong>Detected weights: {pendingEntries.length}</strong><button type="button" onClick={() => setSelectedIds(pendingEntries.map(item => item.id))}>Select All</button><button type="button" onClick={() => setSelectedIds([])}>Clear All</button></div>
+      {pendingEntries.length ? <div className="review-list">{pendingEntries.map(item => <label className="review-row" key={item.id}><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={event => setSelectedIds(old => event.target.checked ? [...old, item.id] : old.filter(id => id !== item.id))} /><b>{item.kg},{String(item.grams).padStart(3, '0')}</b><small>{item.kg} kg {item.grams} g</small></label>)}</div> : <div className="empty-state">No weights detected. You can add them manually after closing this photo.</div>}
+      <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />OK - Calculate Selected</button></div>
+    </div></div>}
+    {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="modal-head"><h2>Bill History</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X /></button></div>{bills.length ? bills.map(bill => <button className="history-item" key={bill.id} onClick={() => loadBill(bill)}><span><b>{bill.totalKg} kg {bill.totalGrams} g</b><small>{bill.date}</small></span><span>{bill.entries.length} entries →</span></button>) : <p className="empty-state">No saved bills yet.</p>}</div></div>}
   </main>;
 }
