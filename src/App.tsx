@@ -53,12 +53,23 @@ export default function App() {
       const lines = result.data.text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
       const found: Entry[] = [];
       for (const line of lines) {
-        const normalized = digits(line);
-        const candidates = normalized.match(/\d{1,4}\s*[,،.]\s*\d{1,3}|\d{1,4}/g) || [];
-        for (const candidate of candidates) {
-          const item = parseEntry(candidate.replace(/\s/g, '').replace(/[،.]/g, ','));
-          if (item && (candidate.includes(',') || candidate.includes('،') || candidate.includes('.') || item.kg <= 300)) found.push(item);
-        }
+        // OCR must identify a complete weight line; ignore page numbers, dates and stray text.
+        const normalized = digits(line)
+          .replace(/\b(?:kg|gm|g)\b/gi, '')
+          .replace(/কেজি|গ্রাম/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const match = normalized.match(/^(?:(?:\d{1,2})\s*[:)\-]\s*)?(\d{1,3})\s*[,،]\s*(\d{1,3})$/);
+        if (!match) continue;
+        const kg = Number(match[1]);
+        const grams = Number(match[2]);
+        if (kg < 1 || kg > 300 || grams < 0 || grams > 999) continue;
+        found.push({
+          id: Date.now() + Math.random(),
+          raw: match[1] + ',' + match[2],
+          kg,
+          grams,
+        });
       }
       setEntries(found);
       setMessage(found.length ? found.length + 'টি সংখ্যা পাওয়া গেছে। হিসাবের আগে সব লাইন যাচাই করুন।' : 'সংখ্যা পাওয়া যায়নি। আলো ভালো করে আবার ছবি তুলুন অথবা হাতে যোগ করুন।');
