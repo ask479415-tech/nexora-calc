@@ -22,20 +22,17 @@ function extractWeightRows(ocrText: string): Entry[] {
     let line = originalLine.trim().replace(/^[•*\-–—]+\s*/, '');
     if (!line || ignored.test(line)) continue;
     line = line.replace(/\b(?:kgs?|grams?|gms?|gm|g)\b/gi, ' ').trim();
-    // Remove a leading row/serial number, but only when another weight follows it.
+    // Remove a row number only when it is clearly separated from the weight.
     line = line.replace(/^\s*\d{1,3}\s*[.)\-:]\s*(?=\d)/, '');
-    line = line.replace(/^\s*\d{1,3}\s+(?=\d{1,3}\s*[,.:/]\s*\d)/, '');
-    // Accept common handwritten forms: 12,250 / 12.250 / 12 250 / 12 kg 250 g.
-    const matches = [...line.matchAll(/\d{1,3}\s*[,.:/]\s*\d{1,3}|\d{1,3}\s+\d{3}|\b\d{1,3}\b/g)];
-    if (!matches.length) continue;
-    for (const found of matches) {
-      const token = found[0].trim();
-      const pair = token.match(/^(\d{1,3})\s*[,.:/]\s*(\d{1,3})$/) || token.match(/^(\d{1,3})\s+(\d{3})$/);
-      const kg = Number(pair ? pair[1] : token);
-      const grams = pair ? Number(pair[2].padEnd(3, '0')) : 0;
-      if (!Number.isFinite(kg) || kg < 1 || kg > 300 || grams < 0 || grams > 999) continue;
-      rows.push({ id: Date.now() + Math.random(), raw: pair ? pair[1] + ',' + pair[2] : String(kg), kg, grams });
-    }
+    line = line.replace(/^\s*\d{1,3}\s+(?=\d{1,3}\s*[,.:]\s*\d)/, '');
+    // Accept the entire line only. Never extract random numbers from the middle of text.
+    const pair = line.match(/^(\d{1,3})\s*[,.:]\s*(\d{1,3})$/) || line.match(/^(\d{1,3})\s+(\d{3})$/);
+    const single = line.match(/^(\d{1,3})$/);
+    if (!pair && !single) continue;
+    const kg = Number(pair ? pair[1] : single![1]);
+    const grams = pair ? Number(pair[2].padEnd(3, '0')) : 0;
+    if (!Number.isFinite(kg) || kg < 1 || kg > 300 || grams > 999) continue;
+    rows.push({ id: Date.now() + Math.random(), raw: pair ? pair[1] + ',' + pair[2] : String(kg), kg, grams });
   }
   return rows;
 }
@@ -59,7 +56,7 @@ async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
   const images: HTMLCanvasElement[] = [];
   // Five full-width, non-overlapping strips make small handwriting easier to read
   // without losing the top or bottom rows of a long page.
-  const bandCount = 5;
+  const bandCount = 1;
   for (let band = 0; band < bandCount; band++) {
     const y = Math.floor(band * height / bandCount);
     const bottom = band === bandCount - 1 ? height : Math.floor((band + 1) * height / bandCount);
@@ -143,8 +140,8 @@ export default function App() {
     setMessage('Preparing photo for English scanning...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
-      // Bengali + English models recognize both Bengali numerals and English digits.
-      worker = await createWorker('eng+ben');
+      // English-only OCR keeps recognition focused on weight digits.
+      worker = await createWorker('eng');
       const images = await makeOcrImages(file), detected: Entry[] = [], textParts: string[] = [];
       for (let index = 0; index < images.length; index++) {
         setMessage('Scanning section ' + (index + 1) + ' of ' + images.length + '...');
