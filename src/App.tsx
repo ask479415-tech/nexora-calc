@@ -177,7 +177,7 @@ export default function App() {
         });
         const result = await worker.recognize(images[index]);
         const rows = extractWeightRows(result.data.text);
-        if (index === 0) fullPageWords = (result.data.words || []).filter((word: any) => word.text?.trim()).map((word: any) => ({ text: String(word.text).trim(), x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 }));
+        if (index === 0) fullPageWords = (((result.data as any).words || []) as any[]).filter((word: any) => word.text?.trim()).map((word: any) => ({ text: String(word.text).trim(), x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 }));
         const confidence = Number(result.data.confidence) || 0;
         const score = rows.length * 100 + confidence;
         if (score > bestScore) {
@@ -190,7 +190,7 @@ export default function App() {
       setOcrWords(fullPageWords);
       setPendingEntries(bestRows);
       setReviewPhoto(URL.createObjectURL(file));
-      setMessage(detected.length ? detected.length + ' possible weight rows found. Check the transcription and confirm.' : 'Page scanned. No clear weight rows found; check the full OCR text and add/correct entries.');
+      setMessage(bestRows.length ? bestRows.length + ' possible weight rows found. Check the transcription and confirm.' : 'Page scanned. No clear weight rows found; check the full OCR text and add/correct entries.');
     } catch (error) {
       setMessage('Scanning failed: ' + (error instanceof Error ? error.message : 'Check internet and try again.'));
     } finally {
