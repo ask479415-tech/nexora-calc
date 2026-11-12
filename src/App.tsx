@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
+import CropPhotoModal from './CropPhotoModal';
 import { Preferences } from '@capacitor/preferences';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -39,8 +40,8 @@ function extractWeightRows(ocrText: string): Entry[] {
 }
 async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
   const bitmap = await createImageBitmap(file);
-  // Bound image size on high-resolution phone cameras.
-  const scale = Math.min(2, 2200 / bitmap.width);
+  // Keep a practical maximum dimension; crop selection happens before OCR.
+  const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
   const width = Math.round(bitmap.width * scale), height = Math.round(bitmap.height * scale);
   const source = document.createElement('canvas'); source.width = width; source.height = height;
   const sourceCtx = source.getContext('2d', { willReadFrequently: true });
@@ -54,22 +55,8 @@ async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
     pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = v;
   }
   sourceCtx.putImageData(pixels, 0, 0);
-  const images: HTMLCanvasElement[] = [source];
-  // Keep the full page, then enlarge overlapping horizontal bands so small
-  // handwritten rows occupy more pixels during OCR.
-  const bandCount = 4;
-  const overlap = Math.round(height * 0.025);
-  for (let band = 0; band < bandCount; band++) {
-    const top = Math.max(0, Math.floor(band * height / bandCount) - overlap);
-    const bottom = Math.min(height, Math.ceil((band + 1) * height / bandCount) + overlap);
-    const crop = document.createElement('canvas');
-    crop.width = width * 2; crop.height = (bottom - top) * 2;
-    const ctx = crop.getContext('2d', { willReadFrequently: true }); if (!ctx) continue;
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(source, 0, top, width, bottom - top, 0, 0, crop.width, crop.height);
-    images.push(crop);
-  }
-  return images;
+  // One OCR pass on the user-selected paper area avoids four slow duplicate passes.
+  return [source];
 }
 function thresholdImage(input: HTMLCanvasElement, threshold: number): HTMLCanvasElement {
   const output = document.createElement('canvas'); output.width = input.width; output.height = input.height;
@@ -122,11 +109,13 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
   const [ocrText, setOcrText] = useState('');
   const [ocrWords, setOcrWords] = useState<OcrWord[]>([]);
   const [selectedOcrWords, setSelectedOcrWords] = useState<number[]>([]);
   const [ocrImageSize, setOcrImageSize] = useState({ width: 1, height: 1 });
+  const workerRef = useRef<Awaited<ReturnType<typeof createWorker>> | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const sum = useMemo(() => total(entries), [entries]);
@@ -152,15 +141,20 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  function choosePhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (file) setCropFile(file);
+  }
+
   async function scan(file?: File) {
     if (!file) return;
     setBusy(true); setOcrText(''); setPendingEntries([]); setOcrWords([]); setSelectedOcrWords([]);
     setMessage('Preparing photo for English scanning...');
-    let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
-      // English-only OCR. Try the whole page and enlarged overlapping row bands.
-      // Handwriting varies, so retain the pass that finds the most complete set of rows.
-      worker = await createWorker('eng');
+      // Reuse the OCR worker between scans; create it only on the first scan.
+      if (!workerRef.current) workerRef.current = await createWorker('eng');
+      const worker = workerRef.current;
       const images = await makeOcrImages(file);
       let bestText = '';
       let bestRows: Entry[] = [];
@@ -168,7 +162,7 @@ export default function App() {
       let fullPageWords: OcrWord[] = [];
       setOcrImageSize({ width: images[0].width, height: images[0].height });
       for (let index = 0; index < images.length; index++) {
-        setMessage(index === 0 ? 'Reading the full page...' : 'Improving recognition: checking enlarged section ' + index + ' of ' + (images.length - 1) + '...');
+        setMessage('Scanning the selected paper area...');
         await worker.setParameters({
           tessedit_pageseg_mode: (index === 0 ? '11' : '6') as any,
           tessedit_char_whitelist: '0123456789,.',
@@ -194,7 +188,6 @@ export default function App() {
     } catch (error) {
       setMessage('Scanning failed: ' + (error instanceof Error ? error.message : 'Check internet and try again.'));
     } finally {
-      if (worker) { try { await worker.terminate(); } catch { /* ignore cleanup errors */ } }
       setBusy(false);
     }
   }
@@ -348,8 +341,8 @@ export default function App() {
         <button className="primary-action" onClick={() => cameraRef.current?.click()} disabled={busy}><Camera />Camera</button>
         <button className="secondary-action" onClick={() => galleryRef.current?.click()} disabled={busy}><ImagePlus />Gallery</button>
       </div>
-      <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={event => scan(event.target.files?.[0])} />
-      <input ref={galleryRef} hidden type="file" accept="image/*" onChange={event => scan(event.target.files?.[0])} />
+      <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={choosePhoto} />
+      <input ref={galleryRef} hidden type="file" accept="image/*" onChange={choosePhoto} />
       <p className="status-line">{busy && <RefreshCw className="spin" size={15} />} {message}</p>
       <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs internet to download English OCR data. Always check the detected entries before calculating.</p>
     </section>
@@ -381,6 +374,7 @@ export default function App() {
     <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check />Save Bill</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown />PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle />WhatsApp</button></section>
     <button className="clear-button" onClick={() => { setEntries([]); setMessage('Start a new calculation.'); }}><X size={15} /> Start New Calculation</button>
     <footer>NEXORA DIGITAL <span>•</span> Weight Record & Bill</footer>
+    {cropFile && <CropPhotoModal file={cropFile} onCancel={() => setCropFile(null)} onScan={croppedFile => { setCropFile(null); void scan(croppedFile); }} />}
     {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
       <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><div className="lens-photo"><img src={reviewPhoto} alt="Selected weight page" />{ocrWords.map((word,index)=><button type="button" key={index} className={'lens-word '+(selectedOcrWords.includes(index)?'selected':'')} style={{left:(word.x0/ocrImageSize.width*100)+'%',top:(word.y0/ocrImageSize.height*100)+'%',width:((word.x1-word.x0)/ocrImageSize.width*100)+'%',height:((word.y1-word.y0)/ocrImageSize.height*100)+'%'}} aria-label={'Select '+word.text} onClick={()=>setSelectedOcrWords(old=>old.includes(index)?old.filter(n=>n!==index):[...old,index])}>{word.text}</button>)}</div></div>
