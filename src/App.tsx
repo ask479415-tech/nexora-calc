@@ -14,8 +14,8 @@ type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[
 const STORE = 'nexora-calc-bills-v1';
 
 function normalizeOcrDigits(value: string): string {
-  const bengali = '০১২৩৪৫৬৭৮৯';
-  return value.replace(/[০-৯]/g, digit => String(bengali.indexOf(digit))).replace(/[，٫]/g, ',').replace(/[।]/g, '.');
+  // This app intentionally recognizes English/Arabic digits only.
+  return value.replace(/[，٫]/g, ',').replace(/[।]/g, '.');
 }
 function extractWeightRows(ocrText: string): Entry[] {
   const rows: Entry[] = [];
@@ -153,7 +153,16 @@ export default function App() {
     setMessage('Preparing photo for English scanning...');
     try {
       // Reuse the OCR worker between scans; create it only on the first scan.
-      if (!workerRef.current) workerRef.current = await createWorker('eng');
+      if (!workerRef.current) {
+        // All OCR runtime files and the English model are bundled inside the APK.
+        // These same-origin paths prevent any first-run CDN or network download.
+        workerRef.current = await createWorker('eng', 1, {
+          workerPath: new URL('ocr/worker.min.js', document.baseURI).toString(),
+          corePath: new URL('ocr/core', document.baseURI).toString(),
+          langPath: new URL('ocr/lang', document.baseURI).toString(),
+          workerBlobURL: false
+        });
+      }
       const worker = workerRef.current;
       const images = await makeOcrImages(file);
       let bestText = '';
@@ -186,7 +195,7 @@ export default function App() {
       setReviewPhoto(URL.createObjectURL(file));
       setMessage(bestRows.length ? bestRows.length + ' possible weight rows found. Check the transcription and confirm.' : 'Page scanned. No clear weight rows found; check the full OCR text and add/correct entries.');
     } catch (error) {
-      setMessage('Scanning failed: ' + (error instanceof Error ? error.message : 'Check internet and try again.'));
+      setMessage('Scanning failed: ' + (error instanceof Error ? error.message : 'Try another photo or restart the app.'));
     } finally {
       setBusy(false);
     }
@@ -344,7 +353,7 @@ export default function App() {
       <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={choosePhoto} />
       <input ref={galleryRef} hidden type="file" accept="image/*" onChange={choosePhoto} />
       <p className="status-line">{busy && <RefreshCw className="spin" size={15} />} {message}</p>
-      <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs internet to download English OCR data. Always check the detected entries before calculating.</p>
+      <p className="hint">Example: 44,100 = 44 kg 100 g. English OCR runs fully on this device; no internet connection is needed. Always check the detected entries before calculating.</p>
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
@@ -378,7 +387,7 @@ export default function App() {
     {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
       <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><div className="lens-photo"><img src={reviewPhoto} alt="Selected weight page" />{ocrWords.map((word,index)=><span key={index} className="lens-word" style={{left:(word.x0/ocrImageSize.width*100)+'%',top:(word.y0/ocrImageSize.height*100)+'%',width:(Math.max(1,word.x1-word.x0)/ocrImageSize.width*100)+'%',height:(Math.max(1,word.y1-word.y0)/ocrImageSize.height*100)+'%'}}>{word.text}{' '}</span>)}</div></div>
-      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><span className="selection-help">ছবির লেখার উপর আঙুল চেপে ধরে টেনে Select করুন</span><button type="button" onPointerDown={event=>event.preventDefault()} onClick={()=>{const selection=window.getSelection();const range=selection&&selection.rangeCount?selection.getRangeAt(0):null;const text=range?Array.from(document.querySelectorAll<HTMLElement>('.lens-word')).filter(span=>{try{return range.intersectsNode(span)}catch{return false}}).map(span=>{const node=span.firstChild;if(!node||node.nodeType!==Node.TEXT_NODE)return '';const value=node.textContent||'';const start=range.startContainer===node?range.startOffset:0;const end=range.endContainer===node?range.endOffset:value.length;return value.slice(start,end).replace(/\\s+$/,'');}).filter(Boolean).join(' '):'';if(text){void navigator.clipboard?.writeText(text).then(()=>setMessage('Selected OCR text copied.')).catch(()=>setMessage('Copy failed. Use the phone selection menu.'));}else setMessage('আগে ছবির লেখার উপর চেপে ধরে Select করুন।');}}>Copy selected</button><button type="button" onPointerDown={event=>event.preventDefault()} onClick={()=>{const text=window.getSelection()?.toString().trim()||'';const rows=extractWeightRows(text);if(rows.length)setPendingEntries(rows);else setMessage('Selected text থেকে কোনো weight row পাওয়া যায়নি।');}}>Use selected text</button></div>
+      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><span className="selection-help">Touch and drag over text in the photo to select it.</span><button type="button" onPointerDown={event=>event.preventDefault()} onClick={()=>{const selection=window.getSelection();const range=selection&&selection.rangeCount?selection.getRangeAt(0):null;const text=range?Array.from(document.querySelectorAll<HTMLElement>('.lens-word')).filter(span=>{try{return range.intersectsNode(span)}catch{return false}}).map(span=>{const node=span.firstChild;if(!node||node.nodeType!==Node.TEXT_NODE)return '';const value=node.textContent||'';const start=range.startContainer===node?range.startOffset:0;const end=range.endContainer===node?range.endOffset:value.length;return value.slice(start,end).replace(/\\s+$/,'');}).filter(Boolean).join(' '):'';if(text){void navigator.clipboard?.writeText(text).then(()=>setMessage('Selected OCR text copied.')).catch(()=>setMessage('Copy failed. Use the phone selection menu.'));}else setMessage('Select text in the photo first.');}}>Copy selected</button><button type="button" onPointerDown={event=>event.preventDefault()} onClick={()=>{const text=window.getSelection()?.toString().trim()||'';const rows=extractWeightRows(text);if(rows.length)setPendingEntries(rows);else setMessage('No weight rows found in the selected text.');}}>Use selected text</button></div>
       {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><label className="review-edit-label">{index+1}. Weight (KG, grams)<input aria-label={'Edit detected weight row ' + (index+1)} defaultValue={item.raw} onBlur={event => { const corrected = parseEntry(event.currentTarget.value); if (corrected) setPendingEntries(old => old.map(row => row.id === item.id ? { ...corrected, id: row.id } : row)); }} /></label><small>Calculated: {item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No clear weight rows detected. You can add them manually after closing this photo.</div>}{ocrText && <div className="ocr-transcript"><strong>Full page text recognized (compare with the photo):</strong><pre className="ocr-debug">{ocrText.slice(0,5000)}</pre></div>}
       <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
     </div></div>}
