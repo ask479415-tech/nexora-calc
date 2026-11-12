@@ -142,29 +142,16 @@ export default function App() {
     try {
       // English-only OCR keeps recognition focused on weight digits.
       worker = await createWorker('eng');
-      const images = await makeOcrImages(file), detected: Entry[] = [], textParts: string[] = [];
-      for (let index = 0; index < images.length; index++) {
-        setMessage('Scanning section ' + (index + 1) + ' of ' + images.length + '...');
-        const image = images[index];
-        await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789,. ', preserve_interword_spaces: '1', user_defined_dpi: '300' });
-        const result = await worker.recognize(image);
-        textParts.push(result.data.text);
-        let found = extractWeightRows(result.data.text);
-        // Retry only empty sections instead of running 30 OCR passes on every photo.
-        if (!found.length) {
-          await worker.setParameters({ tessedit_pageseg_mode: '11' as any });
-          const retry = await worker.recognize(thresholdImage(image, 160));
-          textParts.push(retry.data.text);
-          found = extractWeightRows(retry.data.text);
-        }
-        detected.push(...found.map((entry, row) => ({ ...entry, id: Date.now() + Math.random() + index * 1000 + row })));
-        setPendingEntries([...detected]);
-        setMessage('Scanned section ' + (index + 1) + ' of ' + images.length + ' — ' + detected.length + ' entries found.');
-      }
-      setOcrText(textParts.join('\n'));
+      const images = await makeOcrImages(file);
+      // One full-page OCR pass: faster, and the complete transcription is kept for review.
+      await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789,. kgKG', preserve_interword_spaces: '1', user_defined_dpi: '300' });
+      setMessage('Reading the full page...');
+      const result = await worker.recognize(images[0]);
+      const detected = extractWeightRows(result.data.text);
+      setOcrText(result.data.text);
       setPendingEntries(detected);
       setReviewPhoto(URL.createObjectURL(file));
-      setMessage(detected.length ? detected.length + ' weight entries detected. Please review and confirm.' : 'Scan finished, but no weights were recognized. OCR text is shown in the review window.');
+      setMessage(detected.length ? detected.length + ' possible weight rows found. Check the transcription and confirm.' : 'Page scanned. No clear weight rows found; check the full OCR text and add/correct entries.');
     } catch (error) {
       setMessage('Scanning failed: ' + (error instanceof Error ? error.message : 'Check internet and try again.'));
     } finally {
@@ -359,7 +346,7 @@ export default function App() {
       <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page" /></div>
       <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong></div>
-      {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><b>{index+1}. {item.kg},{String(item.grams).padStart(3, '0')}</b><small>{item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No weights detected. You can add them manually after closing this photo.{ocrText && <pre className="ocr-debug">{ocrText.slice(0,1800)}</pre>}</div>}
+      {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><label className="review-edit-label">{index+1}. Weight (KG, grams)<input aria-label={'Edit detected weight row ' + (index+1)} defaultValue={item.raw} onBlur={event => { const corrected = parseEntry(event.currentTarget.value); if (corrected) setPendingEntries(old => old.map(row => row.id === item.id ? { ...corrected, id: row.id } : row)); }} /></label><small>Calculated: {item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No clear weight rows detected. You can add them manually after closing this photo.</div>}{ocrText && <div className="ocr-transcript"><strong>Full page text recognized (compare with the photo):</strong><pre className="ocr-debug">{ocrText.slice(0,5000)}</pre></div>}
       <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
     </div></div>}
     {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="modal-head"><h2>Bill History</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X /></button></div>{bills.length ? bills.map(bill => <button className="history-item" key={bill.id} onClick={() => loadBill(bill)}><span><b>{bill.totalKg} kg {bill.totalGrams} g</b><small>{bill.date}</small></span><span>{bill.entries.length} entries →</span></button>) : <p className="empty-state">No saved bills yet.</p>}</div></div>}
