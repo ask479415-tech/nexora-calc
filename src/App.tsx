@@ -41,7 +41,8 @@ function extractWeightRows(ocrText: string): Entry[] {
 }
 async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.max(2, Math.min(3, 2200 / bitmap.width));
+  // Bound image size on high-resolution phone cameras.
+  const scale = Math.min(2, 2200 / bitmap.width);
   const width = Math.round(bitmap.width * scale), height = Math.round(bitmap.height * scale);
   const source = document.createElement('canvas'); source.width = width; source.height = height;
   const sourceCtx = source.getContext('2d', { willReadFrequently: true });
@@ -121,6 +122,7 @@ export default function App() {
   const [editing, setEditing] = useState<number | null>(null);
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
+  const [ocrText, setOcrText] = useState('');
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const sum = useMemo(() => total(entries), [entries]);
@@ -137,52 +139,52 @@ export default function App() {
 
   async function scan(file?: File) {
     if (!file) return;
-    setBusy(true); setMessage('Scanning the full page in 5 sections and checking 6 OCR readings per section...');
+    setBusy(true); setOcrText(''); setPendingEntries([]);
+    setMessage('Preparing photo for Bengali + English scanning...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
-      worker = await createWorker('eng');
-      const images = await makeOcrImages(file), detected: Entry[] = [];
+      // Bengali + English models recognize both Bengali numerals and English digits.
+      worker = await createWorker('eng+ben');
+      const images = await makeOcrImages(file), detected: Entry[] = [], textParts: string[] = [];
       for (let index = 0; index < images.length; index++) {
+        setMessage('Scanning section ' + (index + 1) + ' of ' + images.length + '...');
         const image = images[index];
-        const readings: Entry[][] = [];
-        // Compare original, two contrast levels, and two page-segmentation modes.
-        // Keep the reading that finds the most rows in this strip instead of voting
-        // row-by-row (which can accidentally discard a row seen by only one pass).
-        const variants = [image, thresholdImage(image, 145), thresholdImage(image, 175)];
-        for (const variant of variants) {
-          for (const pageMode of ['6', '11']) {
-            await worker.setParameters({
-              tessedit_pageseg_mode: pageMode as any,
-              tessedit_char_whitelist: '0123456789০১২৩৪৫৬৭৮৯,. ',
-              preserve_interword_spaces: '1',
-              user_defined_dpi: '300'
-            });
-            const result = await worker.recognize(variant);
-            readings.push(extractWeightRows(result.data.text));
-          }
+        await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789০১২৩৪৫৬৭৮৯,. ', preserve_interword_spaces: '1', user_defined_dpi: '300' });
+        const result = await worker.recognize(image);
+        textParts.push(result.data.text);
+        let found = extractWeightRows(result.data.text);
+        // Retry only empty sections instead of running 30 OCR passes on every photo.
+        if (!found.length) {
+          await worker.setParameters({ tessedit_pageseg_mode: '11' as any });
+          const retry = await worker.recognize(thresholdImage(image, 160));
+          textParts.push(retry.data.text);
+          found = extractWeightRows(retry.data.text);
         }
-        const bestReading = readings.reduce((best, current) => current.length > best.length ? current : best, [] as Entry[]);
-        detected.push(...bestReading.map((entry, row) => ({ ...entry, id: Date.now() + Math.random() + index * 1000 + row })));
+        detected.push(...found.map((entry, row) => ({ ...entry, id: Date.now() + Math.random() + index * 1000 + row })));
+        setPendingEntries([...detected]);
+        setMessage('Scanned section ' + (index + 1) + ' of ' + images.length + ' — ' + detected.length + ' entries found.');
       }
+      setOcrText(textParts.join('\n'));
       setPendingEntries(detected);
       setReviewPhoto(URL.createObjectURL(file));
-      setMessage(detected.length
-        ? detected.length + ' weight entries detected across 5 page sections. Please compare the count with your paper and edit any incorrect reading.'
-        : 'No clear weight entries detected. You can add them manually.');
+      setMessage(detected.length ? detected.length + ' weight entries detected. Please review and confirm.' : 'Scan finished, but no weights were recognized. OCR text is shown in the review window.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'OCR could not run. Please try again.');
-    } finally { if (worker) await worker.terminate(); setBusy(false); }
+      setMessage('Scanning failed: ' + (error instanceof Error ? error.message : 'Check internet and try again.'));
+    } finally {
+      if (worker) { try { await worker.terminate(); } catch { /* ignore cleanup errors */ } }
+      setBusy(false);
+    }
   }
   function confirmPhotoSelection() {
     const chosen = pendingEntries;
     setEntries(chosen);
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null); setPendingEntries([]);
+    setReviewPhoto(null); setPendingEntries([]); setOcrText('');
     setMessage(chosen.length + ' selected entries are ready for calculation.');
   }
   function cancelPhotoReview() {
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null); setPendingEntries([]);
+    setReviewPhoto(null); setPendingEntries([]); setOcrText('');
     setMessage('Photo selection cancelled.');
   }
   function addEntry() {
@@ -326,7 +328,7 @@ export default function App() {
       <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={event => scan(event.target.files?.[0])} />
       <input ref={galleryRef} hidden type="file" accept="image/*" onChange={event => scan(event.target.files?.[0])} />
       <p className="status-line">{busy && <RefreshCw className="spin" size={15} />} {message}</p>
-      <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs an internet connection to download English OCR data. Always check the detected entries before calculating.</p>
+      <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs internet to download Bengali + English OCR data. Always check the detected entries before calculating.</p>
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
@@ -360,7 +362,7 @@ export default function App() {
       <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page" /></div>
       <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong></div>
-      {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><b>{index+1}. {item.kg},{String(item.grams).padStart(3, '0')}</b><small>{item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No weights detected. You can add them manually after closing this photo.</div>}
+      {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><b>{index+1}. {item.kg},{String(item.grams).padStart(3, '0')}</b><small>{item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No weights detected. You can add them manually after closing this photo.{ocrText && <pre className="ocr-debug">{ocrText.slice(0,1800)}</pre>}</div>}
       <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
     </div></div>}
     {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="modal-head"><h2>Bill History</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X /></button></div>{bills.length ? bills.map(bill => <button className="history-item" key={bill.id} onClick={() => loadBill(bill)}><span><b>{bill.totalKg} kg {bill.totalGrams} g</b><small>{bill.date}</small></span><span>{bill.entries.length} entries →</span></button>) : <p className="empty-state">No saved bills yet.</p>}</div></div>}
