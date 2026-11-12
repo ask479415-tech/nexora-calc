@@ -17,3 +17,10 @@
 
 /* Side-by-side bill summary: total weight on the left, total amount on the right. */
 .preview-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px;border-radius:12px;background:#123b70;color:#d4e5f5}.preview-summary>div{display:flex;flex-direction:column;gap:6px;min-width:0}.preview-summary>div:last-child{text-align:right}.preview-summary span{font-size:10px;color:#c2d8eb}.preview-summary strong{font-size:15px;color:#fff;overflow-wrap:anywhere}.preview-summary small{font-size:9px;color:#c2d8eb}
+
+/* Google Lens-style selectable OCR text overlay */
+.lens-photo{position:relative;width:100%;line-height:0}
+.lens-photo>img{display:block;width:100%;height:auto;max-height:none;object-fit:contain}
+.review-photo-wrap{display:block;max-height:42vh;overflow:auto}
+.lens-word{position:absolute;margin:0;padding:0;border:1px solid transparent;border-radius:2px;background:#ffffff08;color:transparent;font-size:1px;line-height:1;overflow:hidden;cursor:pointer}
+.lens-word.selected{background:#3489e866;border:1px solid #1769b8;color:#102f56;opacity:.9}
