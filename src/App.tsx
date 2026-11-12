@@ -134,6 +134,17 @@ export default function App() {
   const numericRate = Math.max(0, Number(rate) || 0);
   const totalAmount = Math.round(totalWeightKg * numericRate * 100) / 100;
   const money = (value: number) => '₹' + value.toFixed(2);
+  function selectedOcrText() {
+    const words = selectedOcrWords.map(index => ocrWords[index]).filter(Boolean).sort((a,b) => (a.y0+a.y1)-(b.y0+b.y1));
+    const lines: { center: number; height: number; words: string[] }[] = [];
+    for (const word of words) {
+      const center = (word.y0 + word.y1) / 2, height = word.y1 - word.y0;
+      let line = lines.find(item => Math.abs(item.center-center) <= Math.max(8, Math.min(item.height,height)*0.7));
+      if (!line) lines.push(line = { center, height, words: [] });
+      line.words.push(word.text);
+    }
+    return lines.sort((a,b)=>a.center-b.center).map(line=>line.words.join(' ')).join('\\n');
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => setShowSplash(false), 1600);
@@ -373,7 +384,7 @@ export default function App() {
     {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
       <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
       <div className="review-photo-wrap"><div className="lens-photo"><img src={reviewPhoto} alt="Selected weight page" />{ocrWords.map((word,index)=><button type="button" key={index} className={'lens-word '+(selectedOcrWords.includes(index)?'selected':'')} style={{left:(word.x0/ocrImageSize.width*100)+'%',top:(word.y0/ocrImageSize.height*100)+'%',width:((word.x1-word.x0)/ocrImageSize.width*100)+'%',height:((word.y1-word.y0)/ocrImageSize.height*100)+'%'}} aria-label={'Select '+word.text} onClick={()=>setSelectedOcrWords(old=>old.includes(index)?old.filter(n=>n!==index):[...old,index])}>{word.text}</button>)}</div></div>
-      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><strong>{selectedOcrWords.length} text selected</strong><button type="button" onClick={()=>{const text=selectedOcrWords.map(i=>ocrWords[i]?.text||'').join(' ');if(text)navigator.clipboard?.writeText(text);}}>Copy selected</button><button type="button" onClick={()=>{const text=selectedOcrWords.map(i=>ocrWords[i]?.text||'').join(' ');const rows=extractWeightRows(text);if(rows.length)setPendingEntries(rows);}}>Use selected text</button></div>
+      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><strong>{selectedOcrWords.length} text selected</strong><button type="button" onClick={()=>{const text=selectedOcrText();if(text)navigator.clipboard?.writeText(text);}}>Copy selected</button><button type="button" onClick={()=>{const text=selectedOcrText();const rows=extractWeightRows(text);if(rows.length)setPendingEntries(rows);}}>Use selected text</button></div>
       {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><label className="review-edit-label">{index+1}. Weight (KG, grams)<input aria-label={'Edit detected weight row ' + (index+1)} defaultValue={item.raw} onBlur={event => { const corrected = parseEntry(event.currentTarget.value); if (corrected) setPendingEntries(old => old.map(row => row.id === item.id ? { ...corrected, id: row.id } : row)); }} /></label><small>Calculated: {item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No clear weight rows detected. You can add them manually after closing this photo.</div>}{ocrText && <div className="ocr-transcript"><strong>Full page text recognized (compare with the photo):</strong><pre className="ocr-debug">{ocrText.slice(0,5000)}</pre></div>}
       <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
     </div></div>}
