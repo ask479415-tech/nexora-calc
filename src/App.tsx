@@ -53,16 +53,19 @@ async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
     pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = v;
   }
   sourceCtx.putImageData(pixels, 0, 0);
-  const images: HTMLCanvasElement[] = [];
-  // Five full-width, non-overlapping strips make small handwriting easier to read
-  // without losing the top or bottom rows of a long page.
-  const bandCount = 1;
+  const images: HTMLCanvasElement[] = [source];
+  // Keep the full page, then enlarge overlapping horizontal bands so small
+  // handwritten rows occupy more pixels during OCR.
+  const bandCount = 4;
+  const overlap = Math.round(height * 0.025);
   for (let band = 0; band < bandCount; band++) {
-    const y = Math.floor(band * height / bandCount);
-    const bottom = band === bandCount - 1 ? height : Math.floor((band + 1) * height / bandCount);
-    const crop = document.createElement('canvas'); crop.width = width; crop.height = bottom - y;
+    const top = Math.max(0, Math.floor(band * height / bandCount) - overlap);
+    const bottom = Math.min(height, Math.ceil((band + 1) * height / bandCount) + overlap);
+    const crop = document.createElement('canvas');
+    crop.width = width * 2; crop.height = (bottom - top) * 2;
     const ctx = crop.getContext('2d', { willReadFrequently: true }); if (!ctx) continue;
-    ctx.drawImage(source, 0, y, width, bottom - y, 0, 0, width, bottom - y);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, top, width, bottom - top, 0, 0, crop.width, crop.height);
     images.push(crop);
   }
   return images;
@@ -140,16 +143,33 @@ export default function App() {
     setMessage('Preparing photo for English scanning...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
-      // English-only OCR keeps recognition focused on weight digits.
+      // English-only OCR. Try the whole page and enlarged overlapping row bands.
+      // Handwriting varies, so retain the pass that finds the most complete set of rows.
       worker = await createWorker('eng');
       const images = await makeOcrImages(file);
-      // One full-page OCR pass: faster, and the complete transcription is kept for review.
-      await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789,. kgKG', preserve_interword_spaces: '1', user_defined_dpi: '300' });
-      setMessage('Reading the full page...');
-      const result = await worker.recognize(images[0]);
-      const detected = extractWeightRows(result.data.text);
-      setOcrText(result.data.text);
-      setPendingEntries(detected);
+      let bestText = '';
+      let bestRows: Entry[] = [];
+      let bestScore = -1;
+      for (let index = 0; index < images.length; index++) {
+        setMessage(index === 0 ? 'Reading the full page...' : 'Improving recognition: checking enlarged section ' + index + ' of ' + (images.length - 1) + '...');
+        await worker.setParameters({
+          tessedit_pageseg_mode: (index === 0 ? '11' : '6') as any,
+          tessedit_char_whitelist: '0123456789,.',
+          preserve_interword_spaces: '1',
+          user_defined_dpi: '300'
+        });
+        const result = await worker.recognize(images[index]);
+        const rows = extractWeightRows(result.data.text);
+        const confidence = Number(result.data.confidence) || 0;
+        const score = rows.length * 100 + confidence;
+        if (score > bestScore) {
+          bestScore = score;
+          bestText = result.data.text;
+          bestRows = rows;
+        }
+      }
+      setOcrText(bestText);
+      setPendingEntries(bestRows);
       setReviewPhoto(URL.createObjectURL(file));
       setMessage(detected.length ? detected.length + ' possible weight rows found. Check the transcription and confirm.' : 'Page scanned. No clear weight rows found; check the full OCR text and add/correct entries.');
     } catch (error) {
