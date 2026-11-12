@@ -140,7 +140,7 @@ export default function App() {
   async function scan(file?: File) {
     if (!file) return;
     setBusy(true); setOcrText(''); setPendingEntries([]);
-    setMessage('Preparing photo for Bengali + English scanning...');
+    setMessage('Preparing photo for English scanning...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
       // Bengali + English models recognize both Bengali numerals and English digits.
@@ -149,7 +149,7 @@ export default function App() {
       for (let index = 0; index < images.length; index++) {
         setMessage('Scanning section ' + (index + 1) + ' of ' + images.length + '...');
         const image = images[index];
-        await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789০১২৩৪৫৬৭৮৯,. ', preserve_interword_spaces: '1', user_defined_dpi: '300' });
+        await worker.setParameters({ tessedit_pageseg_mode: '6' as any, tessedit_char_whitelist: '0123456789,. ', preserve_interword_spaces: '1', user_defined_dpi: '300' });
         const result = await worker.recognize(image);
         textParts.push(result.data.text);
         let found = extractWeightRows(result.data.text);
@@ -328,7 +328,7 @@ export default function App() {
       <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={event => scan(event.target.files?.[0])} />
       <input ref={galleryRef} hidden type="file" accept="image/*" onChange={event => scan(event.target.files?.[0])} />
       <p className="status-line">{busy && <RefreshCw className="spin" size={15} />} {message}</p>
-      <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs internet to download Bengali + English OCR data. Always check the detected entries before calculating.</p>
+      <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs internet to download English OCR data. Always check the detected entries before calculating.</p>
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
