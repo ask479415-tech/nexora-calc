@@ -7,6 +7,7 @@ import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 type Entry = { id: number; raw: string; kg: number; grams: number };
+type OcrWord = { text: string; x0: number; y0: number; x1: number; y1: number };
 type Customer = { name: string; address: string; phone: string };
 type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number; rate?: number; totalAmount?: number };
 const STORE = 'nexora-calc-bills-v1';
@@ -123,6 +124,8 @@ export default function App() {
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
   const [ocrText, setOcrText] = useState('');
+  const [ocrWords, setOcrWords] = useState<OcrWord[]>([]);
+  const [selectedOcrWords, setSelectedOcrWords] = useState<number[]>([]);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const sum = useMemo(() => total(entries), [entries]);
@@ -139,7 +142,7 @@ export default function App() {
 
   async function scan(file?: File) {
     if (!file) return;
-    setBusy(true); setOcrText(''); setPendingEntries([]);
+    setBusy(true); setOcrText(''); setPendingEntries([]); setOcrWords([]); setSelectedOcrWords([]);
     setMessage('Preparing photo for English scanning...');
     let worker: Awaited<ReturnType<typeof createWorker>> | undefined;
     try {
@@ -150,6 +153,7 @@ export default function App() {
       let bestText = '';
       let bestRows: Entry[] = [];
       let bestScore = -1;
+      let fullPageWords: OcrWord[] = [];
       for (let index = 0; index < images.length; index++) {
         setMessage(index === 0 ? 'Reading the full page...' : 'Improving recognition: checking enlarged section ' + index + ' of ' + (images.length - 1) + '...');
         await worker.setParameters({
@@ -160,6 +164,7 @@ export default function App() {
         });
         const result = await worker.recognize(images[index]);
         const rows = extractWeightRows(result.data.text);
+        if (index === 0) fullPageWords = (result.data.words || []).filter((word: any) => word.text?.trim()).map((word: any) => ({ text: String(word.text).trim(), x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 }));
         const confidence = Number(result.data.confidence) || 0;
         const score = rows.length * 100 + confidence;
         if (score > bestScore) {
@@ -169,6 +174,7 @@ export default function App() {
         }
       }
       setOcrText(bestText);
+      setOcrWords(fullPageWords);
       setPendingEntries(bestRows);
       setReviewPhoto(URL.createObjectURL(file));
       setMessage(detected.length ? detected.length + ' possible weight rows found. Check the transcription and confirm.' : 'Page scanned. No clear weight rows found; check the full OCR text and add/correct entries.');
@@ -183,12 +189,12 @@ export default function App() {
     const chosen = pendingEntries;
     setEntries(chosen);
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null); setPendingEntries([]); setOcrText('');
+    setReviewPhoto(null); setPendingEntries([]); setOcrText(''); setOcrWords([]); setSelectedOcrWords([]);
     setMessage(chosen.length + ' selected entries are ready for calculation.');
   }
   function cancelPhotoReview() {
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null); setPendingEntries([]); setOcrText('');
+    setReviewPhoto(null); setPendingEntries([]); setOcrText(''); setOcrWords([]); setSelectedOcrWords([]);
     setMessage('Photo selection cancelled.');
   }
   function addEntry() {
@@ -364,8 +370,8 @@ export default function App() {
     <footer>NEXORA DIGITAL <span>•</span> Weight Record & Bill</footer>
     {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
       <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
-      <div className="review-photo-wrap"><img src={reviewPhoto} alt="Selected weight page" /></div>
-      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong></div>
+      <div className="review-photo-wrap"><div className="lens-photo"><img src={reviewPhoto} alt="Selected weight page" />{ocrWords.map((word,index)=><button type="button" key={index} className={'lens-word '+(selectedOcrWords.includes(index)?'selected':'')} style={{left:(word.x0/2200*100)+'%',top:(word.y0/Math.max(1,2200)*100)+'%'}} aria-label={'Select '+word.text} onClick={()=>setSelectedOcrWords(old=>old.includes(index)?old.filter(n=>n!==index):[...old,index])}>{word.text}</button>)}</div></div>
+      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><strong>{selectedOcrWords.length} text selected</strong><button type="button" onClick={()=>{const text=selectedOcrWords.map(i=>ocrWords[i]?.text||'').join(' ');if(text)navigator.clipboard?.writeText(text);}}>Copy selected</button><button type="button" onClick={()=>{const text=selectedOcrWords.map(i=>ocrWords[i]?.text||'').join(' ');const rows=extractWeightRows(text);if(rows.length)setPendingEntries(rows);}}>Use selected text</button></div>
       {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><label className="review-edit-label">{index+1}. Weight (KG, grams)<input aria-label={'Edit detected weight row ' + (index+1)} defaultValue={item.raw} onBlur={event => { const corrected = parseEntry(event.currentTarget.value); if (corrected) setPendingEntries(old => old.map(row => row.id === item.id ? { ...corrected, id: row.id } : row)); }} /></label><small>Calculated: {item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No clear weight rows detected. You can add them manually after closing this photo.</div>}{ocrText && <div className="ocr-transcript"><strong>Full page text recognized (compare with the photo):</strong><pre className="ocr-debug">{ocrText.slice(0,5000)}</pre></div>}
       <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
     </div></div>}
