@@ -173,7 +173,9 @@ export default function App() {
         .eq('user_id', user.id)
         .maybeSingle();
       if (run !== checkRun) return;
-      if(error || !data || data.status!=='active' || (APP_ROLE==='admin' && data.role!=='admin') || (APP_ROLE==='customer' && data.role!=='customer')) { setIsAdmin(false); setAuthUser(null); setAccountAccess(data?.status==='pending'?'pending':'blocked'); setMessage(data?.status==='pending'?'Registration submitted. Waiting for administrator approval.':data?.status==='inactive'?'This account was rejected or deactivated.':'Account access is not authorized for this app.'); await supabase.auth.signOut(); return; }
+      if(error || !data || (APP_ROLE==='admin' && data.role!=='admin') || (APP_ROLE==='customer' && data.role!=='customer')) { setIsAdmin(false); setAuthUser(null); setAccountAccess('blocked'); setMessage('Account access is not authorized for this app.'); await supabase.auth.signOut(); return; }
+      if(data.status==='pending') { setIsAdmin(false); setAuthUser(null); setAccountAccess('pending'); setMessage('Registration submitted. Waiting for administrator approval. This screen will unlock automatically after approval.'); return; }
+      if(data.status!=='active') { setIsAdmin(false); setAuthUser(null); setAccountAccess('blocked'); setMessage('This account was rejected or deactivated by the administrator.'); await supabase.auth.signOut(); return; }
       setAuthUser(user); setIsAdmin(data.role==='admin'); setAdminView(data.role==='admin' && APP_ROLE==='admin'); setProfile({full_name:data.full_name||'',phone:data.phone||'',address:data.address||'',company_name:data.company_name||'',bank_holder_name:data.bank_holder_name||'',bank_name:data.bank_name||'',account_number:data.account_number||'',ifsc_code:data.ifsc_code||''}); setAccountAccess('active');
     };
     supabase.auth.getSession().then(({ data }) => {
@@ -231,7 +233,7 @@ export default function App() {
         ? await supabase.auth.signUp({ email: authEmail.trim(), password: authPassword, options:{data:registration} })
         : await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
       if (result.error) throw result.error;
-      if(createAccount){setMessage('Registration submitted. Access will open after admin approval.');setAccountAccess('pending');if(result.data.session) await supabase.auth.signOut();} else setMessage('Sign-in successful. Checking approval...');
+      if(createAccount){setMessage('Registration submitted. Access will open after admin approval.');setAccountAccess('pending');} else setMessage('Sign-in successful. Checking approval...');
     } catch (error) { setMessage('Account action failed: ' + (error instanceof Error ? error.message : 'Please try again.')); }
     finally { setAuthBusy(false); }
   }
