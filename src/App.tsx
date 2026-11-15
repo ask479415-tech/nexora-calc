@@ -171,7 +171,20 @@ export default function App() {
         });
         const result = await worker.recognize(images[index]);
         const rows = extractWeightRows(result.data.text);
-        if (index === 0) fullPageWords = (((result.data as any).words || []) as any[]).filter((word: any) => word.text?.trim()).map((word: any) => ({ text: String(word.text).trim(), x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 }));
+        if (index === 0) {
+          const rawWords = (((result.data as any).words || []) as any[]).filter((word: any) => word.text?.trim()).map((word: any) => ({ text: String(word.text).trim(), x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 }));
+          // Native Android selection follows DOM order, not the absolute screen positions.
+          // Rebuild OCR word order geometrically so a drag cannot copy distant phantom words.
+          const lines: { center: number; height: number; words: OcrWord[] }[] = [];
+          for (const word of rawWords) {
+            const center = (word.y0 + word.y1) / 2;
+            const height = word.y1 - word.y0;
+            let line = lines.find(item => Math.abs(item.center - center) <= Math.max(8, Math.min(item.height, height) * 0.65));
+            if (!line) lines.push(line = { center, height, words: [] });
+            line.words.push(word);
+          }
+          fullPageWords = lines.sort((a, b) => a.center - b.center).flatMap(line => line.words.sort((a, b) => a.x0 - b.x0));
+        }
         const confidence = Number(result.data.confidence) || 0;
         const score = rows.length * 100 + confidence;
         if (score > bestScore) {
