@@ -27,6 +27,11 @@ create trigger on_auth_user_created_nexora
 after insert on auth.users
 for each row execute procedure public.handle_new_nexora_user();
 
+-- Backfill accounts that existed before this trigger was installed.
+insert into public.user_profiles (user_id, email, status)
+select id, email, 'active' from auth.users
+on conflict (user_id) do update set email = excluded.email;
+
 alter table public.user_profiles enable row level security;
 grant select on public.user_profiles to authenticated;
 drop policy if exists "Users can read own access status" on public.user_profiles;
