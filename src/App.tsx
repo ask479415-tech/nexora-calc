@@ -416,7 +416,7 @@ export default function App() {
     doc.setFont('helvetica','bold'); doc.text('Address:',m,y+22); doc.setFont('helvetica','normal');
     const addressLines = doc.splitTextToSize(customer.address.trim() || '—', tableW-22);
     doc.text(addressLines.slice(0,2),m+19,y+22);
-    doc.setFont('helvetica','bold');doc.text('Bank:',m,y+34);doc.setFont('helvetica','normal');doc.text((profile.bank_name||'—')+' | A/C: '+(profile.account_number||'—')+' | IFSC: '+(profile.ifsc_code||'—'),m+12,y+34);
+    doc.setFont('helvetica','bold');doc.text('Bank:',m,y+34);doc.setFont('helvetica','normal');doc.text((profile.bank_name||'—')+' | Holder: '+(profile.bank_holder_name||'—')+' | A/C: '+(profile.account_number||'—')+' | IFSC: '+(profile.ifsc_code||'—'),m+12,y+34);
     y=101; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
     doc.text('WEIGHT DETAILS',m,y); y+=8;
     doc.setFillColor(235,241,247); doc.rect(m,y-5,tableW,12,'F');
@@ -564,7 +564,7 @@ export default function App() {
     </section>
     <section className="bill-preview">
       <div className="preview-top"><div><span className="eyebrow">POWERED BY NEXORA DIGITAL</span><h2>GLOBAL NEXUS</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
-      <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p><p>Company: {profile.company_name||'—'}</p><p>Bank: {profile.bank_name||'—'} • A/C: {profile.account_number||'—'} • IFSC: {profile.ifsc_code||'—'}</p></div>
+      <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p><p>Company: {profile.company_name||'—'}</p><p>Bank: {profile.bank_name||'—'} • Holder: {profile.bank_holder_name||'—'} • A/C: {profile.account_number||'—'} • IFSC: {profile.ifsc_code||'—'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
       <div className="preview-summary"><div><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong><small>Rate: {money(numericRate)} / KG</small></div></div>
       <div className="preview-sign"><strong>Global Nexus</strong><small>Authorised Signature</small></div>
