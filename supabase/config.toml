@@ -1,0 +1,2 @@
+[functions.admin-customers]
+verify_jwt = true
