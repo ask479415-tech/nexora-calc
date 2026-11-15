@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react';
+import { createContext, FormEvent, ReactNode, useCallback, useEffect, useState } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 
@@ -9,6 +9,8 @@ type Registration = {
   address: string;
   company_name: string;
 };
+export const UserProfileContext = createContext<Registration | null>(null);
+
 type GateState = 'loading' | 'register' | 'pending' | 'approved' | 'rejected' | 'deactivated' | 'deleted' | 'offline' | 'setup';
 
 const TOKEN_KEY = 'nexora-calc-access-token-v1';
@@ -136,7 +138,7 @@ export default function AccessGate({ children }: { children: ReactNode }) {
   }
 
   if (state === 'loading') return <div style={page}><div style={{color:'#fff'}}>Checking registration approval…</div></div>;
-  if (state === 'approved') return <>{children}</>;
+  if (state === 'approved') return <UserProfileContext.Provider value={profile}>{children}</UserProfileContext.Provider>;
 
   const update = (key: keyof Registration, value: string) => setForm(old => ({ ...old, [key]: value }));
   const statusTitle: Record<string,string> = {
