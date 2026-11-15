@@ -12,8 +12,11 @@ type Entry = { id: number; raw: string; kg: number; grams: number };
 type OcrWord = { text: string; x0: number; y0: number; x1: number; y1: number };
 type Customer = { name: string; address: string; phone: string };
 type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number; rate?: number; totalAmount?: number };
-type AdminCustomer = { user_id: string; email: string | null; status: 'active' | 'inactive'; created_at: string };
+type Profile = { full_name:string; phone:string; address:string; company_name:string; bank_holder_name:string; bank_name:string; account_number:string; ifsc_code:string };
+type AdminCustomer = Profile & { user_id:string; email:string|null; status:'pending'|'active'|'inactive'; created_at:string };
+const APP_ROLE = (import.meta as any).env.VITE_APP_ROLE || 'customer';
 const STORE = 'nexora-calc-bills-v1';
+const EMPTY_PROFILE:Profile={full_name:'',phone:'',address:'',company_name:'',bank_holder_name:'',bank_name:'',account_number:'',ifsc_code:''};
 
 function normalizeOcrDigits(value: string): string {
   const bengali = '০১২৩৪৫৬৭৮৯';
@@ -109,7 +112,10 @@ export default function App() {
   const [message, setMessage] = useState('Take a photo or choose a page from your gallery.');
   const [bills, setBills] = useState<SavedBill[]>([]);
   const [authUser, setAuthUser] = useState<{ id: string; email?: string } | null>(null);
-  const [accountAccess, setAccountAccess] = useState<'checking' | 'active' | 'blocked'>('checking');
+  const [accountAccess, setAccountAccess] = useState<'checking'|'active'|'pending'|'blocked'>('checking');
+  const [profile,setProfile]=useState<Profile>(EMPTY_PROFILE);
+  const [registration,setRegistration]=useState<Profile>(EMPTY_PROFILE);
+  const [showProfile,setShowProfile]=useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminView, setAdminView] = useState(false);
   const [adminCustomers, setAdminCustomers] = useState<AdminCustomer[]>([]);
@@ -156,30 +162,21 @@ export default function App() {
         setAuthUser(null);
         setIsAdmin(false);
         setAdminView(false);
-        setAccountAccess(current => current === 'blocked' ? 'blocked' : 'active');
+        setAccountAccess(current => current === 'pending' ? 'pending' : 'blocked');
         return;
       }
       const run = ++checkRun;
       setAccountAccess('checking');
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('status, role')
+        .select('status, role, full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code')
         .eq('user_id', user.id)
         .maybeSingle();
       if (run !== checkRun) return;
-      if (error || !data || data.status !== 'active') {
-        setIsAdmin(false);
-        setAccountAccess('blocked');
-        setAuthUser(null);
-        setMessage(data?.status === 'inactive'
-          ? 'This account has been deactivated by the administrator.'
-          : 'Account access could not be verified. Please contact the administrator.');
-        await supabase.auth.signOut();
-        return;
-      }
-      setAuthUser(user);
-      setIsAdmin(data.role === 'admin');
-      setAccountAccess('active');
+      if(error || !data || (APP_ROLE==='admin' && data.role!=='admin') || (APP_ROLE==='customer' && data.role!=='customer')) { setIsAdmin(false); setAuthUser(null); setAccountAccess('blocked'); setMessage('Account access is not authorized for this app.'); await supabase.auth.signOut(); return; }
+      if(data.status==='pending') { setIsAdmin(false); setAuthUser(null); setAccountAccess('pending'); setMessage('Registration submitted. Waiting for administrator approval. This screen will unlock automatically after approval.'); return; }
+      if(data.status!=='active') { setIsAdmin(false); setAuthUser(null); setAccountAccess('blocked'); setMessage('This account was rejected or deactivated by the administrator.'); await supabase.auth.signOut(); return; }
+      setAuthUser(user); setIsAdmin(data.role==='admin'); setAdminView(data.role==='admin' && APP_ROLE==='admin'); setProfile({full_name:data.full_name||'',phone:data.phone||'',address:data.address||'',company_name:data.company_name||'',bank_holder_name:data.bank_holder_name||'',bank_name:data.bank_name||'',account_number:data.account_number||'',ifsc_code:data.ifsc_code||''}); setAccountAccess('active');
     };
     supabase.auth.getSession().then(({ data }) => {
       void verifyAccess(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null);
@@ -228,15 +225,15 @@ export default function App() {
   }, [authUser?.id]);
 
   async function signInOrSignUp(createAccount: boolean) {
+    if (createAccount && Object.values(registration).some(value => !value.trim())) { setMessage('Please complete all customer profile and bank details before registering.'); return; }
     if (!authEmail.trim() || authPassword.length < 6) { setMessage('Enter a valid email and a password with at least 6 characters.'); return; }
     setAuthBusy(true);
     try {
       const result = createAccount
-        ? await supabase.auth.signUp({ email: authEmail.trim(), password: authPassword })
+        ? await supabase.auth.signUp({ email: authEmail.trim(), password: authPassword, options:{data:registration} })
         : await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
       if (result.error) throw result.error;
-      if (createAccount && !result.data.session) setMessage('Account created. Check your email to confirm, then sign in.');
-      else setMessage(createAccount ? 'Account created and signed in.' : 'Signed in. Loading your cloud bills...');
+      if(createAccount){setMessage('Registration submitted. Access will open after admin approval.');setAccountAccess('pending');} else setMessage('Sign-in successful. Checking approval...');
     } catch (error) { setMessage('Account action failed: ' + (error instanceof Error ? error.message : 'Please try again.')); }
     finally { setAuthBusy(false); }
   }
@@ -245,6 +242,8 @@ export default function App() {
     if (error) setMessage('Sign out failed: ' + error.message);
     else setMessage('Signed out. Local bills remain on this device.');
   }
+
+  async function saveProfile(){if(!authUser)return;const {error}=await supabase.from('user_profiles').update({...profile,updated_at:new Date().toISOString()}).eq('user_id',authUser.id);setMessage(error?'Profile update failed: '+error.message:'Profile saved. Updated bank details will appear on new bills.');setShowProfile(false);}
 
   async function loadAdminCustomers() {
     setAdminLoading(true);
@@ -420,7 +419,8 @@ export default function App() {
     doc.setFont('helvetica','bold'); doc.text('Address:',m,y+22); doc.setFont('helvetica','normal');
     const addressLines = doc.splitTextToSize(customer.address.trim() || '—', tableW-22);
     doc.text(addressLines.slice(0,2),m+19,y+22);
-    y=91; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
+    doc.setFont('helvetica','bold');doc.text('Bank:',m,y+34);doc.setFont('helvetica','normal');doc.text((profile.bank_name||'—')+' | Holder: '+(profile.bank_holder_name||'—')+' | A/C: '+(profile.account_number||'—')+' | IFSC: '+(profile.ifsc_code||'—'),m+12,y+34);
+    y=101; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
     doc.text('WEIGHT DETAILS',m,y); y+=8;
     doc.setFillColor(235,241,247); doc.rect(m,y-5,tableW,12,'F');
     doc.setFontSize(8); doc.setTextColor(43,68,94);
@@ -484,6 +484,8 @@ export default function App() {
     setEntries(bill.entries); setCustomer(bill.customer || { name: '', address: '', phone: '' }); setRate(String(typeof bill.rate === 'number' ? bill.rate : 20)); setShowHistory(false); setMessage('Previous bill loaded.');
   }
 
+  useEffect(()=>{if(isAdmin && APP_ROLE==='admin' && adminView) void loadAdminCustomers();},[isAdmin,adminView]);
+
   if (showSplash) return <div className="splash-screen">
     <img src="./nexora-logo.svg" alt="Nexora logo" />
     <h1>Nexora Digital</h1>
@@ -491,21 +493,21 @@ export default function App() {
   </div>;
 
   if (accountAccess === 'checking') return <main className="app-shell"><section className="customer-card"><h2>Checking account access…</h2><p className="status-line">Please wait while we verify your account.</p></section></main>;
-  if (accountAccess === 'blocked') return <main className="app-shell"><section className="customer-card"><h2>Account Deactivated</h2><p className="status-line">This account is currently disabled by the administrator. Contact the administrator if you believe this is a mistake.</p><button className="secondary-action" type="button" onClick={() => { setAccountAccess('checking'); void supabase.auth.signOut(); }}>Return to Sign In</button></section></main>;
+  if(!authUser) return <main className="app-shell"><section className="customer-card"><h2>{accountAccess==='pending'?'Approval Pending':APP_ROLE==='admin'?'Admin Sign In':'Customer Registration'}</h2><p className="status-line">{message}</p>{accountAccess!=='pending'&&<><label>Email<input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="Email address"/></label><label>Password<input type="password" value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="At least 6 characters"/></label>{APP_ROLE==='customer'&&<>{([['full_name','Full Name'],['phone','Phone Number'],['address','Address'],['company_name','Company Name'],['bank_holder_name','Account Holder Name'],['bank_name','Bank Name'],['account_number','Account Number'],['ifsc_code','IFSC Code']] as const).map(([k,l])=><label key={k}>{l}<input value={registration[k]} onChange={e=>setRegistration(p=>({...p,[k]:e.target.value}))}/></label>)}</>}<div className="upload-actions">{APP_ROLE==='customer'&&<button className="primary-action" disabled={authBusy} onClick={()=>void signInOrSignUp(true)}>Register</button>}<button className="secondary-action" disabled={authBusy} onClick={()=>void signInOrSignUp(false)}>Sign In</button></div></>}</section><p className="admin-footnote">Customer access requires administrator approval. Approved accounts stay signed in on this device.</p></main>;
 
-  if (isAdmin && adminView) return <main className="app-shell admin-shell">
+  if(isAdmin && APP_ROLE==='admin' && adminView) return <main className="app-shell admin-shell">
     <header className="topbar">
-      <button className="icon-button" type="button" onClick={() => setAdminView(false)} aria-label="Back to calculator"><ArrowLeft /></button>
+      <button className="icon-button" type="button" onClick={() => { if (APP_ROLE === 'customer') setAdminView(false); }} aria-label="Back"><ArrowLeft /></button>
       <div className="brand-copy"><strong>Admin Panel</strong><small>Customer account management</small></div>
       <button className="icon-button" type="button" onClick={() => void loadAdminCustomers()} aria-label="Refresh customers" disabled={adminLoading}><RefreshCw className={adminLoading ? 'spin' : ''} /></button>
     </header>
-    <section className="admin-summary"><div><ShieldCheck size={22} /><span>ADMIN ACCESS</span></div><strong>Customer Management</strong><p>Activate or deactivate customer access to Nexora Calc.</p><small>{adminCustomers.length} customer accounts</small></section>
+    <section className="admin-summary"><div><ShieldCheck size={22} /><span>ADMIN ACCESS</span></div><strong>Customer Management</strong><p>Activate or deactivate customer access to Nexora Calc.</p><small>{adminCustomers.length} total customers • {adminCustomers.filter(c=>c.status==='pending').length} pending</small></section>
     <section className="customer-card admin-list-card">
       <div className="section-heading"><div><span className="step">USERS</span><h2>Registered Customers</h2></div><span className="count">{adminCustomers.length}</span></div>
       {adminLoading ? <p className="status-line">Loading customer accounts…</p> : adminCustomers.length ? <div className="admin-customer-list">{adminCustomers.map(item => <article className="admin-customer-row" key={item.user_id}>
-        <div className="admin-customer-info"><strong>{item.email || 'Email unavailable'}</strong><small>Joined {item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN') : '—'}</small><span className={item.status === 'active' ? 'admin-status active' : 'admin-status inactive'}>{item.status === 'active' ? 'ACTIVE' : 'INACTIVE'}</span></div>
+        <div className="admin-customer-info"><strong>{item.full_name||item.email||'Customer'}</strong><small>{item.email} • {item.phone||'No phone'} • {item.company_name||'No company'}</small><small>{item.address||'No address'} • {item.bank_name||'No bank'} • {item.bank_holder_name||'No account holder'} • {item.account_number||'No account'} • {item.ifsc_code||'No IFSC'}</small><span className={'admin-status '+(item.status==='active'?'active':item.status==='pending'?'pending':'inactive')}>{item.status.toUpperCase()}</span></div>
         <button className={item.status === 'active' ? 'admin-deactivate' : 'admin-activate'} type="button" disabled={adminBusyId === item.user_id} onClick={() => void changeCustomerStatus(item.user_id, item.status === 'active' ? 'inactive' : 'active')}>
-          {adminBusyId === item.user_id ? 'Please wait…' : item.status === 'active' ? <><UserX size={15} /> Deactivate</> : <><UserCheck size={15} /> Activate</>}
+          {adminBusyId === item.user_id ? 'Please wait…' : item.status === 'active' ? <><UserX size={15} /> Deactivate</> : <><UserCheck size={15} /> Approve</>}
         </button>
       </article>)}</div> : <div className="empty-state"><Users size={25} /><p>No customers have registered yet.</p><small>New customer accounts will appear here automatically.</small></div>}
     </section>
@@ -516,7 +518,7 @@ export default function App() {
     <header className="topbar">
       <img className="brand-logo" src="./nexora-logo.svg" alt="Nexora Digital logo" />
       <div className="brand-copy"><strong>Nexora Digital</strong><small>Weight Calculation & Billing</small></div>
-      <button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History /></button>
+      <button className="icon-button" onClick={()=>setShowProfile(true)} aria-label="Profile"><Users/></button><button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History /></button>
     </header>
     <section className="hero">
       <div className="hero-copy"><span className="eyebrow">SMART WEIGHT BOOK</span><h1>Weight records,<br />made simple.</h1><p>Scan your page, review the numbers and calculate the total weight.</p></div>
@@ -524,8 +526,9 @@ export default function App() {
     </section>
     <section className="customer-card" style={{ marginBottom: 16 }}>
       <div className="section-heading"><div><span className="step">CLOUD</span><h2>Cloud Backup & Account</h2></div><span className="count">{authUser ? 'SYNC ON' : 'LOCAL MODE'}</span></div>
-      {authUser ? <><p className="status-line">Signed in as {authUser.email || 'your account'}. Bills sync to your private cloud account.</p>{isAdmin && <button className="primary-action admin-open-button" type="button" onClick={() => { setAdminView(true); void loadAdminCustomers(); }}><ShieldCheck size={17} /> Open Admin Panel</button>}<button className="secondary-action" type="button" onClick={signOut}>Sign Out</button></> : <><label>Email Address<input type="email" autoComplete="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={event => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><div className="upload-actions"><button className="primary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(false)}>Sign In</button><button className="secondary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(true)}>Create Account</button></div><p className="hint">Your bills remain saved offline. Sign in to back them up and sync across devices. Email confirmation may be required.</p></>}
+      {authUser ? <><p className="status-line">Signed in as {authUser.email||'your account'}. Bills sync to your private cloud account.</p>{isAdmin&&APP_ROLE==='admin'&&<button className="primary-action admin-open-button" type="button" onClick={()=>{setAdminView(true);void loadAdminCustomers();}}><ShieldCheck size={17}/>Open Admin Panel</button>}</> : null}
     </section>
+    {showProfile&&<div className="modal-backdrop"><section className="history-modal"><div className="modal-head"><h2>My Profile</h2><button className="icon-button" onClick={()=>setShowProfile(false)}><X/></button></div>{([['full_name','Full Name'],['phone','Phone Number'],['address','Address'],['company_name','Company Name'],['bank_holder_name','Account Holder Name'],['bank_name','Bank Name'],['account_number','Account Number'],['ifsc_code','IFSC Code']] as const).map(([k,l])=><label key={k}>{l}<input value={profile[k]} onChange={e=>setProfile(p=>({...p,[k]:e.target.value}))}/></label>)}<button className="primary-action" onClick={()=>void saveProfile()}>Save Profile</button></section></div>}
     <section className="upload-card">
       <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
       <div className="upload-actions">
@@ -566,7 +569,7 @@ export default function App() {
     </section>
     <section className="bill-preview">
       <div className="preview-top"><div><span className="eyebrow">POWERED BY NEXORA DIGITAL</span><h2>GLOBAL NEXUS</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
-      <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim() || 'Customer address will appear here'}</p></div>
+      <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p><p>Company: {profile.company_name||'—'}</p><p>Bank: {profile.bank_name||'—'} • Holder: {profile.bank_holder_name||'—'} • A/C: {profile.account_number||'—'} • IFSC: {profile.ifsc_code||'—'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
       <div className="preview-summary"><div><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong><small>Rate: {money(numericRate)} / KG</small></div></div>
       <div className="preview-sign"><strong>Global Nexus</strong><small>Authorised Signature</small></div>
