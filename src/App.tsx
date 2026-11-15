@@ -294,7 +294,7 @@ export default function App() {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      setMessage(status === 'inactive' ? 'Customer account deactivated.' : 'Customer account activated.');
+      setMessage(status === 'inactive' ? 'Customer account deactivated.' : 'Customer email confirmed and account approved.');
       await loadAdminCustomers();
     } catch (error) {
       setMessage('Customer status could not be changed: ' + (error instanceof Error ? error.message : 'Please try again.'));
@@ -538,7 +538,7 @@ export default function App() {
       {adminLoading ? <p className="status-line">Loading customer accounts…</p> : adminCustomers.length ? <div className="admin-customer-list">{adminCustomers.map(item => <article className="admin-customer-row" key={item.user_id}>
         <div className="admin-customer-info"><strong>{item.full_name||item.email||'Customer'}</strong><small>{item.email} • {item.phone||'No phone'} • {item.company_name||'No company'}</small><small>{item.address||'No address'} • {item.bank_name||'No bank'} • {item.bank_holder_name||'No account holder'} • {item.account_number||'No account'} • {item.ifsc_code||'No IFSC'}</small><span className={'admin-status '+(item.status==='active'?'active':item.status==='pending'?'pending':'inactive')}>{item.status.toUpperCase()}</span></div>
         <button className={item.status === 'active' ? 'admin-deactivate' : 'admin-activate'} type="button" disabled={adminBusyId === item.user_id} onClick={() => void changeCustomerStatus(item.user_id, item.status === 'active' ? 'inactive' : 'active')}>
-          {adminBusyId === item.user_id ? 'Please wait…' : item.status === 'active' ? <><UserX size={15} /> Deactivate</> : <><UserCheck size={15} /> Approve</>}
+          {adminBusyId === item.user_id ? 'Please wait…' : item.status === 'active' ? <><UserX size={15} /> Deactivate</> : <><UserCheck size={15} /> Approve & Confirm</>}
         </button>
       </article>)}</div> : <div className="empty-state"><Users size={25} /><p>No customers have registered yet.</p><small>New customer accounts will appear here automatically.</small></div>}
     </section>
