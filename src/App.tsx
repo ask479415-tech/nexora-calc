@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X } from 'lucide-react';
+import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X, Users, UserCheck, UserX, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
 import CropPhotoModal from './CropPhotoModal';
@@ -12,6 +12,7 @@ type Entry = { id: number; raw: string; kg: number; grams: number };
 type OcrWord = { text: string; x0: number; y0: number; x1: number; y1: number };
 type Customer = { name: string; address: string; phone: string };
 type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number; rate?: number; totalAmount?: number };
+type AdminCustomer = { user_id: string; email: string | null; status: 'active' | 'inactive'; created_at: string };
 const STORE = 'nexora-calc-bills-v1';
 
 function normalizeOcrDigits(value: string): string {
@@ -109,6 +110,11 @@ export default function App() {
   const [bills, setBills] = useState<SavedBill[]>([]);
   const [authUser, setAuthUser] = useState<{ id: string; email?: string } | null>(null);
   const [accountAccess, setAccountAccess] = useState<'checking' | 'active' | 'blocked'>('checking');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminView, setAdminView] = useState(false);
+  const [adminCustomers, setAdminCustomers] = useState<AdminCustomer[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminBusyId, setAdminBusyId] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
@@ -148,6 +154,8 @@ export default function App() {
     const verifyAccess = async (user: { id: string; email?: string } | null) => {
       if (!user) {
         setAuthUser(null);
+        setIsAdmin(false);
+        setAdminView(false);
         setAccountAccess(current => current === 'blocked' ? 'blocked' : 'active');
         return;
       }
@@ -155,11 +163,12 @@ export default function App() {
       setAccountAccess('checking');
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('status')
+        .select('status, role')
         .eq('user_id', user.id)
         .maybeSingle();
       if (run !== checkRun) return;
       if (error || !data || data.status !== 'active') {
+        setIsAdmin(false);
         setAccountAccess('blocked');
         setAuthUser(null);
         setMessage(data?.status === 'inactive'
@@ -169,6 +178,7 @@ export default function App() {
         return;
       }
       setAuthUser(user);
+      setIsAdmin(data.role === 'admin');
       setAccountAccess('active');
     };
     supabase.auth.getSession().then(({ data }) => {
@@ -234,6 +244,37 @@ export default function App() {
     const { error } = await supabase.auth.signOut();
     if (error) setMessage('Sign out failed: ' + error.message);
     else setMessage('Signed out. Local bills remain on this device.');
+  }
+
+  async function loadAdminCustomers() {
+    setAdminLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-customers', { body: { action: 'list' } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setAdminCustomers((data?.customers || []) as AdminCustomer[]);
+    } catch (error) {
+      setMessage('Admin customer list could not be loaded: ' + (error instanceof Error ? error.message : 'Please try again.'));
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  async function changeCustomerStatus(userId: string, status: 'active' | 'inactive') {
+    setAdminBusyId(userId);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-customers', {
+        body: { action: 'set-status', user_id: userId, status }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setMessage(status === 'inactive' ? 'Customer account deactivated.' : 'Customer account activated.');
+      await loadAdminCustomers();
+    } catch (error) {
+      setMessage('Customer status could not be changed: ' + (error instanceof Error ? error.message : 'Please try again.'));
+    } finally {
+      setAdminBusyId(null);
+    }
   }
 
   function choosePhoto(event: React.ChangeEvent<HTMLInputElement>) {
@@ -452,6 +493,25 @@ export default function App() {
   if (accountAccess === 'checking') return <main className="app-shell"><section className="customer-card"><h2>Checking account access…</h2><p className="status-line">Please wait while we verify your account.</p></section></main>;
   if (accountAccess === 'blocked') return <main className="app-shell"><section className="customer-card"><h2>Account Deactivated</h2><p className="status-line">This account is currently disabled by the administrator. Contact the administrator if you believe this is a mistake.</p><button className="secondary-action" type="button" onClick={() => { setAccountAccess('checking'); void supabase.auth.signOut(); }}>Return to Sign In</button></section></main>;
 
+  if (isAdmin && adminView) return <main className="app-shell admin-shell">
+    <header className="topbar">
+      <button className="icon-button" type="button" onClick={() => setAdminView(false)} aria-label="Back to calculator"><ArrowLeft /></button>
+      <div className="brand-copy"><strong>Admin Panel</strong><small>Customer account management</small></div>
+      <button className="icon-button" type="button" onClick={() => void loadAdminCustomers()} aria-label="Refresh customers" disabled={adminLoading}><RefreshCw className={adminLoading ? 'spin' : ''} /></button>
+    </header>
+    <section className="admin-summary"><div><ShieldCheck size={22} /><span>ADMIN ACCESS</span></div><strong>Customer Management</strong><p>Activate or deactivate customer access to Nexora Calc.</p><small>{adminCustomers.length} customer accounts</small></section>
+    <section className="customer-card admin-list-card">
+      <div className="section-heading"><div><span className="step">USERS</span><h2>Registered Customers</h2></div><span className="count">{adminCustomers.length}</span></div>
+      {adminLoading ? <p className="status-line">Loading customer accounts…</p> : adminCustomers.length ? <div className="admin-customer-list">{adminCustomers.map(item => <article className="admin-customer-row" key={item.user_id}>
+        <div className="admin-customer-info"><strong>{item.email || 'Email unavailable'}</strong><small>Joined {item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN') : '—'}</small><span className={item.status === 'active' ? 'admin-status active' : 'admin-status inactive'}>{item.status === 'active' ? 'ACTIVE' : 'INACTIVE'}</span></div>
+        <button className={item.status === 'active' ? 'admin-deactivate' : 'admin-activate'} type="button" disabled={adminBusyId === item.user_id} onClick={() => void changeCustomerStatus(item.user_id, item.status === 'active' ? 'inactive' : 'active')}>
+          {adminBusyId === item.user_id ? 'Please wait…' : item.status === 'active' ? <><UserX size={15} /> Deactivate</> : <><UserCheck size={15} /> Activate</>}
+        </button>
+      </article>)}</div> : <div className="empty-state"><Users size={25} /><p>No customers have registered yet.</p><small>New customer accounts will appear here automatically.</small></div>}
+    </section>
+    <p className="admin-footnote">Admin access is protected by Supabase server-side authorization. Customer accounts cannot change their own status.</p>
+  </main>;
+
   return <main className="app-shell">
     <header className="topbar">
       <img className="brand-logo" src="./nexora-logo.svg" alt="Nexora Digital logo" />
@@ -464,7 +524,7 @@ export default function App() {
     </section>
     <section className="customer-card" style={{ marginBottom: 16 }}>
       <div className="section-heading"><div><span className="step">CLOUD</span><h2>Cloud Backup & Account</h2></div><span className="count">{authUser ? 'SYNC ON' : 'LOCAL MODE'}</span></div>
-      {authUser ? <><p className="status-line">Signed in as {authUser.email || 'your account'}. Bills sync to your private cloud account.</p><button className="secondary-action" type="button" onClick={signOut}>Sign Out</button></> : <><label>Email Address<input type="email" autoComplete="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={event => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><div className="upload-actions"><button className="primary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(false)}>Sign In</button><button className="secondary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(true)}>Create Account</button></div><p className="hint">Your bills remain saved offline. Sign in to back them up and sync across devices. Email confirmation may be required.</p></>}
+      {authUser ? <><p className="status-line">Signed in as {authUser.email || 'your account'}. Bills sync to your private cloud account.</p>{isAdmin && <button className="primary-action admin-open-button" type="button" onClick={() => { setAdminView(true); void loadAdminCustomers(); }}><ShieldCheck size={17} /> Open Admin Panel</button>}<button className="secondary-action" type="button" onClick={signOut}>Sign Out</button></> : <><label>Email Address<input type="email" autoComplete="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={event => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><div className="upload-actions"><button className="primary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(false)}>Sign In</button><button className="secondary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(true)}>Create Account</button></div><p className="hint">Your bills remain saved offline. Sign in to back them up and sync across devices. Email confirmation may be required.</p></>}
     </section>
     <section className="upload-card">
       <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
