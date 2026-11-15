@@ -36,12 +36,17 @@ jobs:
         run: |
           sed -i "s/com.nexora.calc/com.nexora.calc.admin/" capacitor.config.ts
           sed -i "s/Nexora Digital Calculator/Nexora Calc Admin/" capacitor.config.ts
+      - name: Recreate Android project for separate Admin package
+        run: |
+          rm -rf android
+          npx cap add android
+          python scripts/generate-android-icons.py
       - name: Build Admin APK
         env: { VITE_APP_ROLE: admin }
         run: |
           npm run build
           npx cap sync android
-          cd android && ./gradlew clean assembleDebug
+          cd android && chmod +x gradlew && ./gradlew clean assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../release/Nexora-Calc-Admin.apk
       - uses: actions/upload-artifact@v4
         with:
