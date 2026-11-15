@@ -22,7 +22,7 @@ function newDeviceId() {
 }
 
 const page: React.CSSProperties = {
-  minHeight: '100vh', minHeight: '100dvh', display: 'grid', placeItems: 'center',
+  minHeight: '100dvh', display: 'grid', placeItems: 'center',
   padding: 20, background: 'linear-gradient(145deg,#0d2748,#174d83 58%,#eaf2fa)',
   fontFamily: 'Inter,Arial,sans-serif', color: '#173451',
 };
@@ -151,7 +151,7 @@ export default function AccessGate({ children }: { children: ReactNode }) {
           onChange={event=>update(key,event.target.value)} style={field} />
       </label>)}
       {message && <p role="alert" style={{color:'#b42318',fontSize:12,lineHeight:1.5}}>{message}</p>}
-      <button disabled={busy} style={{...action,opacity:busy?.65:1}}>{busy?'Submitting…':'Submit Registration'}</button>
+      <button disabled={busy} style={{...action,opacity: busy ? 0.65 : 1}}>{busy?'Submitting…':'Submit Registration'}</button>
     </form>
     <p style={{textAlign:'center',fontSize:10,color:'#8b9aab',lineHeight:1.5,marginBottom:0}}>No password or login is required. Access is enabled only after admin approval.</p>
   </section></div>;
