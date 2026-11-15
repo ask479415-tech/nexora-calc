@@ -218,8 +218,19 @@ export default function App() {
   }
   function addEntry() {
     const item = parseEntry(draft);
-    if (!item) { setMessage('Enter a weight like 44,100 or 39,300.'); return; }
+    if (!item) { setMessage('Enter a weight like 22.200 or 39.300.'); return; }
     setEntries(old => [...old, item]); setDraft('');
+    setMessage('Weight added to the list.');
+  }
+  function pressCalculatorKey(key: string) {
+    if (key === '⌫') { setDraft(value => value.slice(0, -1)); return; }
+    if (key === 'C') { setDraft(''); return; }
+    if (key === 'ENTER') { addEntry(); return; }
+    if (key === '.' || key === ',') {
+      setDraft(value => value.includes('.') || value.includes(',') ? value : value + key);
+      return;
+    }
+    setDraft(value => value.length < 8 ? value + key : value);
   }
   function updateEntry(id: number, value: string) {
     const item = parseEntry(value);
@@ -361,8 +372,18 @@ export default function App() {
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
-      {entries.length === 0 ? <div className="empty-state">No weight entries added yet.</div> : <div className="entry-list">{entries.map(entry => <div className="entry-row" key={entry.id}>{editing === entry.id ? <input autoFocus defaultValue={entry.raw} onBlur={event => { updateEntry(entry.id, event.target.value); setEditing(null); }} onKeyDown={event => { if (event.key === 'Enter') { updateEntry(entry.id, event.currentTarget.value); setEditing(null); } }} /> : <strong>{entry.kg} <small>kg</small> {entry.grams} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(entry.id)} aria-label="Edit"><Pencil size={16} /></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(item => item.id !== entry.id))} aria-label="Delete"><Trash2 size={16} /></button></div>)}</div>}
-      <div className="add-row"><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && addEntry()} placeholder="Add a weight, e.g. 44,100" /><button onClick={addEntry} aria-label="Add"><Plus /></button></div>
+      <div className="manual-calculator">
+        <div className="calculator-display">
+          <span>ENTER WEIGHT (KG)</span>
+          <input aria-label="Manual weight entry" type="text" inputMode="decimal" value={draft} onChange={event => setDraft(event.target.value.replace(/[^0-9.,]/g, '').slice(0, 8))} onKeyDown={event => event.key === 'Enter' && addEntry()} placeholder="0.000" />
+        </div>
+        <div className="calculator-keypad">
+          {['7','8','9','4','5','6','1','2','3','C','0','⌫',',','.'].map(key => <button type="button" key={key} className={key === 'C' || key === '⌫' ? 'calculator-key utility' : 'calculator-key'} onClick={() => pressCalculatorKey(key)}>{key}</button>)}
+          <button type="button" className="calculator-enter" onClick={addEntry}><Plus size={18} /> ENTER / ADD</button>
+        </div>
+      </div>
+      <div className="entry-list-heading"><strong>Added weights</strong><span>{entries.length} entries</span></div>
+      {entries.length === 0 ? <div className="empty-state">No weight entries added yet. Type a weight above and press ENTER.</div> : <div className="entry-list">{entries.map((entry,index) => <div className="entry-row" key={entry.id}><span className="entry-serial">{index+1}.</span>{editing === entry.id ? <input autoFocus defaultValue={entry.raw} onBlur={event => { updateEntry(entry.id, event.target.value); setEditing(null); }} onKeyDown={event => { if (event.key === 'Enter') { updateEntry(entry.id, event.currentTarget.value); setEditing(null); } }} /> : <strong>{entry.kg} <small>kg</small> {String(entry.grams).padStart(3,'0')} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(entry.id)} aria-label="Edit"><Pencil size={16} /></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(item => item.id !== entry.id))} aria-label="Delete"><Trash2 size={16} /></button></div>)}</div>}
     </section>
     <section className="customer-card">
       <div className="section-heading"><div><span className="step">03</span><h2>Customer details</h2></div><span className="count">Live preview</span></div>
