@@ -1,0 +1,38 @@
+name: Build Nexora Admin App
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/user-registration-approval]
+    paths:
+      - 'admin-app/**'
+      - '.github/workflows/admin-app-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-app
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin-app/package.json
+      - name: Install dependencies
+        run: npm install
+      - name: Build admin portal
+        run: npm run build
+      - name: Upload admin portal
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nexora-Admin-Web
+          path: admin-app/dist/
+          retention-days: 14
