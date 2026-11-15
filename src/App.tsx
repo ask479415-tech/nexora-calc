@@ -481,6 +481,8 @@ export default function App() {
     setEntries(bill.entries); setCustomer(bill.customer || { name: '', address: '', phone: '' }); setRate(String(typeof bill.rate === 'number' ? bill.rate : 20)); setShowHistory(false); setMessage('Previous bill loaded.');
   }
 
+  useEffect(()=>{if(isAdmin && APP_ROLE==='admin' && adminView) void loadAdminCustomers();},[isAdmin,adminView]);
+
   if (showSplash) return <div className="splash-screen">
     <img src="./nexora-logo.svg" alt="Nexora logo" />
     <h1>Nexora Digital</h1>
