@@ -6,6 +6,7 @@ import CropPhotoModal from './CropPhotoModal';
 import { Preferences } from '@capacitor/preferences';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { supabase } from './lib/supabase';
 
 type Entry = { id: number; raw: string; kg: number; grams: number };
 type OcrWord = { text: string; x0: number; y0: number; x1: number; y1: number };
@@ -106,6 +107,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Take a photo or choose a page from your gallery.');
   const [bills, setBills] = useState<SavedBill[]>([]);
+  const [authUser, setAuthUser] = useState<{ id: string; email?: string } | null>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
@@ -138,8 +143,49 @@ export default function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => setShowSplash(false), 1600);
     Preferences.get({ key: STORE }).then(({ value }) => { if (value) setBills(JSON.parse(value) as SavedBill[]); }).catch(() => setMessage('Bill history could not be loaded on this device.'));
-    return () => window.clearTimeout(timer);
+    supabase.auth.getSession().then(({ data }) => setAuthUser(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null));
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => setAuthUser(session?.user ? { id: session.user.id, email: session.user.email } : null));
+    return () => { window.clearTimeout(timer); authListener.subscription.unsubscribe(); };
   }, []);
+
+  useEffect(() => {
+    if (!authUser) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from('weight_bills').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) { setMessage('Signed in, but cloud history could not be loaded: ' + error.message); return; }
+      const cloudBills: SavedBill[] = (data || []).map((row: any) => ({ id: Number(row.id), date: row.bill_date, customer: row.customer || { name: '', address: '', phone: '' }, entries: row.entries || [], totalKg: row.total_kg, totalGrams: row.total_grams, rate: Number(row.rate ?? 20), totalAmount: Number(row.total_amount ?? 0) }));
+      setBills(local => {
+        const merged = [...cloudBills];
+        for (const bill of local) if (!merged.some(item => item.id === bill.id)) merged.push(bill);
+        merged.sort((a,b) => b.id-a.id);
+        void Preferences.set({ key: STORE, value: JSON.stringify(merged.slice(0,100)) });
+        return merged.slice(0,100);
+      });
+      setMessage('Cloud sync connected. Your bill history is up to date.');
+    })();
+    return () => { cancelled = true; };
+  }, [authUser?.id]);
+
+  async function signInOrSignUp(createAccount: boolean) {
+    if (!authEmail.trim() || authPassword.length < 6) { setMessage('Enter a valid email and a password with at least 6 characters.'); return; }
+    setAuthBusy(true);
+    try {
+      const result = createAccount
+        ? await supabase.auth.signUp({ email: authEmail.trim(), password: authPassword })
+        : await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+      if (result.error) throw result.error;
+      if (createAccount && !result.data.session) setMessage('Account created. Check your email to confirm, then sign in.');
+      else setMessage(createAccount ? 'Account created and signed in.' : 'Signed in. Loading your cloud bills...');
+    } catch (error) { setMessage('Account action failed: ' + (error instanceof Error ? error.message : 'Please try again.')); }
+    finally { setAuthBusy(false); }
+  }
+  async function signOut() {
+    const { error } = await supabase.auth.signOut();
+    if (error) setMessage('Sign out failed: ' + error.message);
+    else setMessage('Signed out. Local bills remain on this device.');
+  }
 
   function choosePhoto(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
@@ -244,7 +290,12 @@ export default function App() {
       await Preferences.set({ key: STORE, value: JSON.stringify(next) });
       const check = await Preferences.get({ key: STORE });
       if (!check.value) throw new Error('Device storage did not confirm the saved bill.');
-      setBills(next); setMessage('Bill permanently saved on this device. Open History to view it.');
+      setBills(next);
+      if (authUser) {
+        const { error } = await supabase.from('weight_bills').upsert({ id: bill.id, user_id: authUser.id, bill_date: bill.date, customer: bill.customer, entries: bill.entries, total_kg: bill.totalKg, total_grams: bill.totalGrams, rate: bill.rate ?? 20, total_amount: bill.totalAmount ?? 0 }, { onConflict: 'user_id,id' });
+        if (error) { setMessage('Bill saved on this device, but cloud sync failed: ' + error.message); return; }
+        setMessage('Bill saved on this device and synced to your cloud account.');
+      } else setMessage('Bill saved on this device. Sign in to sync it to the cloud.');
     } catch (error) { setMessage('Bill could not be saved: ' + (error instanceof Error ? error.message : 'Check device storage and try again.')); }
   }
   async function pdf() {
@@ -358,6 +409,10 @@ export default function App() {
     <section className="hero">
       <div className="hero-copy"><span className="eyebrow">SMART WEIGHT BOOK</span><h1>Weight records,<br />made simple.</h1><p>Scan your page, review the numbers and calculate the total weight.</p></div>
       <div className="hero-icon"><img src="./nexora-logo.svg" alt="" /></div>
+    </section>
+    <section className="customer-card" style={{ marginBottom: 16 }}>
+      <div className="section-heading"><div><span className="step">CLOUD</span><h2>Cloud Backup & Account</h2></div><span className="count">{authUser ? 'SYNC ON' : 'LOCAL MODE'}</span></div>
+      {authUser ? <><p className="status-line">Signed in as {authUser.email || 'your account'}. Bills sync to your private cloud account.</p><button className="secondary-action" type="button" onClick={signOut}>Sign Out</button></> : <><label>Email Address<input type="email" autoComplete="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} placeholder="you@example.com" /></label><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={event => setAuthPassword(event.target.value)} placeholder="At least 6 characters" /></label><div className="upload-actions"><button className="primary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(false)}>Sign In</button><button className="secondary-action" type="button" disabled={authBusy} onClick={() => void signInOrSignUp(true)}>Create Account</button></div><p className="hint">Your bills remain saved offline. Sign in to back them up and sync across devices. Email confirmation may be required.</p></>}
     </section>
     <section className="upload-card">
       <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
