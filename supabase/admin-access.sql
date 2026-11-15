@@ -57,3 +57,6 @@ where p.user_id = u.id
 -- update public.user_profiles
 -- set role = 'admin', status = 'active', updated_at = now()
 -- where email = 'alimsk7861@outlook.com';
+
+-- Refresh the Supabase REST schema cache after adding the columns.
+notify pgrst, 'reload schema';
