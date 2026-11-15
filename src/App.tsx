@@ -588,7 +588,7 @@ export default function App() {
           <input aria-label="Manual weight entry" type="text" inputMode="decimal" value={draft} onChange={event => setDraft(event.target.value.replace(/[^0-9.,]/g, '').slice(0, 8))} onKeyDown={event => event.key === 'Enter' && addEntry()} placeholder="0.000" />
         </div>
         <div className="calculator-keypad">
-          {['7','8','9','4','5','6','1','2','3','C','0','⌫',',','.'].map(key => <button type="button" key={key} className={key === 'C' || key === '⌫' ? 'calculator-key utility' : 'calculator-key'} onClick={() => pressCalculatorKey(key)}>{key}</button>)}
+          {['7','8','9','⌫','4','5','6','C','1','2','3',',','0','.'].map(key => <button type="button" key={key} className={key === 'C' || key === '⌫' ? 'calculator-key utility' : 'calculator-key'} onClick={() => pressCalculatorKey(key)}>{key}</button>)}
           <button type="button" className="calculator-enter" onClick={addEntry}><Plus size={18} /> ENTER / ADD</button>
         </div>
       </div>
