@@ -162,7 +162,7 @@ export default function App() {
         setAuthUser(null);
         setIsAdmin(false);
         setAdminView(false);
-        setAccountAccess('blocked');
+        setAccountAccess(current => current === 'pending' ? 'pending' : 'blocked');
         return;
       }
       const run = ++checkRun;
@@ -492,7 +492,7 @@ export default function App() {
 
   if(isAdmin && APP_ROLE==='admin' && adminView) return <main className="app-shell admin-shell">
     <header className="topbar">
-      <button className="icon-button" type="button" onClick={() => setAdminView(false)} aria-label="Back to calculator"><ArrowLeft /></button>
+      <button className="icon-button" type="button" onClick={() => { if (APP_ROLE === 'customer') setAdminView(false); }} aria-label="Back"><ArrowLeft /></button>
       <div className="brand-copy"><strong>Admin Panel</strong><small>Customer account management</small></div>
       <button className="icon-button" type="button" onClick={() => void loadAdminCustomers()} aria-label="Refresh customers" disabled={adminLoading}><RefreshCw className={adminLoading ? 'spin' : ''} /></button>
     </header>
@@ -500,7 +500,7 @@ export default function App() {
     <section className="customer-card admin-list-card">
       <div className="section-heading"><div><span className="step">USERS</span><h2>Registered Customers</h2></div><span className="count">{adminCustomers.length}</span></div>
       {adminLoading ? <p className="status-line">Loading customer accounts…</p> : adminCustomers.length ? <div className="admin-customer-list">{adminCustomers.map(item => <article className="admin-customer-row" key={item.user_id}>
-        <div className="admin-customer-info"><strong>{item.full_name||item.email||'Customer'}</strong><small>{item.email} • {item.phone||'No phone'} • {item.company_name||'No company'}</small><small>{item.address||'No address'} • {item.bank_name||'No bank'} • {item.account_number||'No account'} • {item.ifsc_code||'No IFSC'}</small><span className={'admin-status '+(item.status==='active'?'active':item.status==='pending'?'pending':'inactive')}>{item.status.toUpperCase()}</span></div>
+        <div className="admin-customer-info"><strong>{item.full_name||item.email||'Customer'}</strong><small>{item.email} • {item.phone||'No phone'} • {item.company_name||'No company'}</small><small>{item.address||'No address'} • {item.bank_name||'No bank'} • {item.bank_holder_name||'No account holder'} • {item.account_number||'No account'} • {item.ifsc_code||'No IFSC'}</small><span className={'admin-status '+(item.status==='active'?'active':item.status==='pending'?'pending':'inactive')}>{item.status.toUpperCase()}</span></div>
         <button className={item.status === 'active' ? 'admin-deactivate' : 'admin-activate'} type="button" disabled={adminBusyId === item.user_id} onClick={() => void changeCustomerStatus(item.user_id, item.status === 'active' ? 'inactive' : 'active')}>
           {adminBusyId === item.user_id ? 'Please wait…' : item.status === 'active' ? <><UserX size={15} /> Deactivate</> : <><UserCheck size={15} /> Activate</>}
         </button>
