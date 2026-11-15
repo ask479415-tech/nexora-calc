@@ -40,3 +40,10 @@ The user-facing calculator app has no password or login screen. Do not ship the 
 - Create the first administrator in Supabase Authentication (email/password), then add that Auth user's UUID to `public.nexora_admins` using the SQL statement above. Merely creating an Auth user does not grant admin rights.
 - The admin portal uses Supabase email/password Auth and the protected admin RPCs. It does not expose a service-role credential.
 - Do not publish the admin portal publicly until Supabase URL/key are configured and the first admin membership has been verified.
+
+## GitHub Actions configuration
+In the repository Settings → Secrets and variables → Actions, add these repository secrets:
+- `VITE_SUPABASE_URL` — the Supabase project URL.
+- `VITE_SUPABASE_ANON_KEY` — the public anon/publishable key only.
+
+Both Android and Admin build workflows read these secrets at build time. If they are missing, the apps compile without a live Supabase connection and the user app remains on its setup screen. Never add a `service_role` key.
