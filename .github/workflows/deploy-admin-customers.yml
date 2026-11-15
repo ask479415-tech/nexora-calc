@@ -2,6 +2,11 @@ name: Deploy Supabase Edge Function
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/admin-customers/**"
+      - ".github/workflows/deploy-admin-customers.yml"
 
 jobs:
   deploy-admin-customers:
