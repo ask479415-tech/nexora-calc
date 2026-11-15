@@ -168,7 +168,9 @@ export default function App() {
       }
       const run = ++checkRun;
       if (user.email) setAuthEmail(user.email);
-      setAccountAccess('checking');
+      // Keep the current screen visible during silent 20-second approval checks.
+      // Only show the checking screen during the initial session/profile lookup.
+      setAccountAccess(current => current === 'active' || current === 'pending' ? current : 'checking');
       const { data, error } = await supabase
         .from('user_profiles')
         .select('status, role, full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code')
