@@ -108,6 +108,7 @@ export default function App() {
   const [message, setMessage] = useState('Take a photo or choose a page from your gallery.');
   const [bills, setBills] = useState<SavedBill[]>([]);
   const [authUser, setAuthUser] = useState<{ id: string; email?: string } | null>(null);
+  const [accountAccess, setAccountAccess] = useState<'checking' | 'active' | 'blocked'>('checking');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
@@ -143,9 +144,57 @@ export default function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => setShowSplash(false), 1600);
     Preferences.get({ key: STORE }).then(({ value }) => { if (value) setBills(JSON.parse(value) as SavedBill[]); }).catch(() => setMessage('Bill history could not be loaded on this device.'));
-    supabase.auth.getSession().then(({ data }) => setAuthUser(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null));
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => setAuthUser(session?.user ? { id: session.user.id, email: session.user.email } : null));
-    return () => { window.clearTimeout(timer); authListener.subscription.unsubscribe(); };
+    let checkRun = 0;
+    const verifyAccess = async (user: { id: string; email?: string } | null) => {
+      if (!user) {
+        setAuthUser(null);
+        setAccountAccess('active');
+        return;
+      }
+      const run = ++checkRun;
+      setAccountAccess('checking');
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('status')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (run !== checkRun) return;
+      if (error || !data || data.status !== 'active') {
+        setAccountAccess('blocked');
+        setAuthUser(null);
+        setMessage(data?.status === 'inactive'
+          ? 'This account has been deactivated by the administrator.'
+          : 'Account access could not be verified. Please contact the administrator.');
+        await supabase.auth.signOut();
+        return;
+      }
+      setAuthUser(user);
+      setAccountAccess('active');
+    };
+    supabase.auth.getSession().then(({ data }) => {
+      void verifyAccess(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null);
+    });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user ? { id: session.user.id, email: session.user.email } : null;
+      // Defer the profile query until after the auth callback completes.
+      window.setTimeout(() => { void verifyAccess(user); }, 0);
+    });
+    const recheck = async () => {
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user;
+      if (user) await verifyAccess({ id: user.id, email: user.email });
+    };
+    const interval = window.setInterval(() => { void recheck(); }, 20000);
+    const onFocus = () => { void recheck(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -399,6 +448,9 @@ export default function App() {
     <h1>Nexora Digital</h1>
     <p>Simple. Accurate. Yours.</p>
   </div>;
+
+  if (accountAccess === 'checking') return <main className="app-shell"><section className="customer-card"><h2>Checking account access…</h2><p className="status-line">Please wait while we verify your account.</p></section></main>;
+  if (accountAccess === 'blocked') return <main className="app-shell"><section className="customer-card"><h2>Account Deactivated</h2><p className="status-line">This account is currently disabled by the administrator. Contact the administrator if you believe this is a mistake.</p><button className="secondary-action" type="button" onClick={() => { setAccountAccess('checking'); void supabase.auth.signOut(); }}>Return to Sign In</button></section></main>;
 
   return <main className="app-shell">
     <header className="topbar">
