@@ -244,7 +244,23 @@ export default function App() {
         ? await supabase.auth.signUp({ email: authEmail.trim(), password: authPassword, options:{data:registration} })
         : await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
       if (result.error) throw result.error;
-      if(createAccount){setMessage('Registration submitted. Access will open after admin approval.');setAccountAccess('pending');} else setMessage('Sign-in successful. Checking approval...');
+      if (createAccount) {
+        if (result.data.session) {
+          setMessage('Registration submitted. Waiting for administrator approval. You will stay signed in and this app will open automatically after approval.');
+          setAccountAccess('pending');
+          setShowLoginPage(false);
+        } else {
+          // Supabase email confirmation is still enabled for this project.
+          // No session means this device cannot auto-unlock after approval until the
+          // customer signs in once. Admin approval will confirm the email as well.
+          setMessage('Registration created, but Supabase did not start a customer session. The administrator can confirm and approve this account. After approval, sign in once with this same email and password. For future registrations to stay signed in automatically, turn OFF Confirm email in Supabase Authentication > Providers > Email.');
+          setAccountAccess('blocked');
+          setShowLoginPage(true);
+        }
+      } else {
+        setMessage('Sign-in successful. Checking approval...');
+        setShowLoginPage(false);
+      }
     } catch (error) { setMessage('Account action failed: ' + (error instanceof Error ? error.message : 'Please try again.')); }
     finally { setAuthBusy(false); }
   }
