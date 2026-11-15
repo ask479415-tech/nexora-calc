@@ -31,3 +31,12 @@ The separate Nexora Admin App should sign in an administrator with Supabase Auth
 - Bank details are stored separately from registration data and are not included in the admin registration list.
 
 The user-facing calculator app has no password or login screen. Do not ship the Supabase service-role key in either app.
+
+## Separate Nexora Admin App
+- The standalone admin source is in `admin-app/`; it is a separate Vite/React application and does not alter the calculator app build.
+- Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the admin app build environment. Use only the public anon/publishable key, never the service-role key.
+- Install/build locally from `admin-app/` using `npm install` then `npm run build`.
+- GitHub Actions workflow `.github/workflows/admin-app-build.yml` builds the admin portal and uploads `Nexora-Admin-Web`.
+- Create the first administrator in Supabase Authentication (email/password), then add that Auth user's UUID to `public.nexora_admins` using the SQL statement above. Merely creating an Auth user does not grant admin rights.
+- The admin portal uses Supabase email/password Auth and the protected admin RPCs. It does not expose a service-role credential.
+- Do not publish the admin portal publicly until Supabase URL/key are configured and the first admin membership has been verified.
