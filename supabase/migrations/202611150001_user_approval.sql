@@ -20,6 +20,8 @@ create table if not exists public.nexora_admins (
   created_at timestamptz not null default now()
 );
 
+create unique index if not exists nexora_users_email_unique on public.nexora_users (lower(email));
+
 alter table public.nexora_users enable row level security;
 alter table public.nexora_admins enable row level security;
 revoke all on public.nexora_users from anon, authenticated;
