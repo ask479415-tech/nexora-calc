@@ -173,7 +173,16 @@ export default function App() {
         .eq('user_id', user.id)
         .maybeSingle();
       if (run !== checkRun) return;
-      if(error || !data || (APP_ROLE==='admin' && data.role!=='admin') || (APP_ROLE==='customer' && data.role!=='customer')) { setIsAdmin(false); setAuthUser(null); setAccountAccess('blocked'); setMessage('Account access is not authorized for this app.'); await supabase.auth.signOut(); return; }
+      if(error || !data || (APP_ROLE==='admin' && data.role!=='admin') || (APP_ROLE==='customer' && data.role!=='customer')) {
+        const reason = error
+          ? 'Profile lookup failed: ' + error.message
+          : !data
+            ? 'No profile row found for this signed-in user ID: ' + user.id
+            : 'Role/status mismatch. This APK expects role "' + APP_ROLE + '", but the profile has role "' + data.role + '" and status "' + data.status + '".';
+        setIsAdmin(false); setAuthUser(null); setAccountAccess('blocked');
+        setMessage('Admin access check failed. ' + reason + ' Signed-in email: ' + (user.email || 'not available') + '.');
+        await supabase.auth.signOut(); return;
+      }
       if(data.status==='pending') { setIsAdmin(false); setAuthUser(null); setAccountAccess('pending'); setMessage('Registration submitted. Waiting for administrator approval. This screen will unlock automatically after approval.'); return; }
       if(data.status!=='active') { setIsAdmin(false); setAuthUser(null); setAccountAccess('blocked'); setMessage('This account was rejected or deactivated by the administrator.'); await supabase.auth.signOut(); return; }
       setAuthUser(user); setIsAdmin(data.role==='admin'); setAdminView(data.role==='admin' && APP_ROLE==='admin'); setProfile({full_name:data.full_name||'',phone:data.phone||'',address:data.address||'',company_name:data.company_name||'',bank_holder_name:data.bank_holder_name||'',bank_name:data.bank_name||'',account_number:data.account_number||'',ifsc_code:data.ifsc_code||''}); setAccountAccess('active');
