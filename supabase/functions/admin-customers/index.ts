@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
   if (body.action === "list") {
     const { data, error } = await adminClient
       .from("user_profiles")
-      .select("user_id, email, status, created_at")
+      .select("user_id, email, status, created_at, full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code")
       .eq("role", "customer")
       .order("created_at", { ascending: false });
     if (error) return jsonResponse({ error: "Could not load customer accounts." }, 500);
@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
       .from("user_profiles")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("user_id", userId)
-      .select("user_id, email, status, created_at")
+      .select("user_id, email, status, created_at, full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code")
       .single();
     if (updateError) return jsonResponse({ error: "Customer status update failed." }, 500);
     return jsonResponse({ customer: updated });
