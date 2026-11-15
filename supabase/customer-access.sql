@@ -16,6 +16,7 @@ alter table public.user_profiles add column if not exists bank_holder_name text;
 alter table public.user_profiles add column if not exists bank_name text;
 alter table public.user_profiles add column if not exists account_number text;
 alter table public.user_profiles add column if not exists ifsc_code text;
+alter table public.user_profiles alter column status set default 'pending';
 alter table public.user_profiles drop constraint if exists user_profiles_status_check;
 alter table public.user_profiles add constraint user_profiles_status_check check(status in ('pending','active','inactive'));
 create or replace function public.handle_new_nexora_user() returns trigger language plpgsql security definer set search_path=public as $$
