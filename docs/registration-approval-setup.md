@@ -11,7 +11,7 @@ This migration adds the online approval database. The existing calculator, OCR, 
 
 ## Supabase setup (required before live testing)
 1. Create a Supabase project.
-2. Open SQL Editor and run `supabase/migrations/202611150001_user_approval.sql`.
+2. Open SQL Editor and run both migrations in order: `supabase/migrations/202611150001_user_approval.sql`, then `supabase/migrations/202611150002_bank_details.sql`.
 3. Create the app's public client configuration in `.env` (never put the service-role key in the mobile app):
    - `VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co`
    - `VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY`
@@ -23,5 +23,11 @@ The separate Nexora Admin App should sign in an administrator with Supabase Auth
 - `nexora_admin_list_users()` — registration details and total registered count
 - `nexora_admin_set_status({p_user_id, p_status})` — `approved`, `rejected`, or `deactivated`
 - `nexora_admin_remove_user({p_user_id})` — soft-remove and revoke access
+
+## Bank details migration
+- Each approved user can store their own account holder name, bank name, account number, IFSC, branch and optional UPI ID.
+- `nexora_get_bank_details({p_access_token})` returns the bank details for the approved device token.
+- `nexora_save_bank_details({...})` saves the details for that approved user only.
+- Bank details are stored separately from registration data and are not included in the admin registration list.
 
 The user-facing calculator app has no password or login screen. Do not ship the Supabase service-role key in either app.
