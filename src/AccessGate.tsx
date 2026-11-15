@@ -158,7 +158,7 @@ export default function AccessGate({ children }: { children: ReactNode }) {
 
   return <div style={page}><section style={{...panel,textAlign:'center'}}>
     <div style={{fontSize:12,fontWeight:800,letterSpacing:2,color:'#4381b5'}}>NEXORA DIGITAL</div>
-    <div style={{fontSize:38,marginTop:16}}>{state==='approved'?'✓':state==='pending'?'⌛':'🔒'}</div>
+    <div style={{fontSize:38,marginTop:16}}>{state==='pending'?'⌛':'🔒'}</div>
     <h1 style={{fontSize:23,margin:'8px 0'}}>{statusTitle[state] || 'Access Unavailable'}</h1>
     <p style={{fontSize:13,color:'#71849a',lineHeight:1.7}}>
       {state==='pending'?'Your registration has been submitted. The calculator will unlock automatically after the administrator approves your account.':
