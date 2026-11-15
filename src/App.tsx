@@ -174,7 +174,7 @@ export default function App() {
         .maybeSingle();
       if (run !== checkRun) return;
       if(error || !data || data.status!=='active' || (APP_ROLE==='admin' && data.role!=='admin') || (APP_ROLE==='customer' && data.role!=='customer')) { setIsAdmin(false); setAuthUser(null); setAccountAccess(data?.status==='pending'?'pending':'blocked'); setMessage(data?.status==='pending'?'Registration submitted. Waiting for administrator approval.':data?.status==='inactive'?'This account was rejected or deactivated.':'Account access is not authorized for this app.'); await supabase.auth.signOut(); return; }
-      setAuthUser(user); setIsAdmin(data.role==='admin'); setProfile({full_name:data.full_name||'',phone:data.phone||'',address:data.address||'',company_name:data.company_name||'',bank_holder_name:data.bank_holder_name||'',bank_name:data.bank_name||'',account_number:data.account_number||'',ifsc_code:data.ifsc_code||''}); setAccountAccess('active');
+      setAuthUser(user); setIsAdmin(data.role==='admin'); setAdminView(data.role==='admin' && APP_ROLE==='admin'); setProfile({full_name:data.full_name||'',phone:data.phone||'',address:data.address||'',company_name:data.company_name||'',bank_holder_name:data.bank_holder_name||'',bank_name:data.bank_name||'',account_number:data.account_number||'',ifsc_code:data.ifsc_code||''}); setAccountAccess('active');
     };
     supabase.auth.getSession().then(({ data }) => {
       void verifyAccess(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null);
