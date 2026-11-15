@@ -148,7 +148,7 @@ export default function App() {
     const verifyAccess = async (user: { id: string; email?: string } | null) => {
       if (!user) {
         setAuthUser(null);
-        setAccountAccess('active');
+        setAccountAccess(current => current === 'blocked' ? 'blocked' : 'active');
         return;
       }
       const run = ++checkRun;
