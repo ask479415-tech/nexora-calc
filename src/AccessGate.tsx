@@ -54,15 +54,20 @@ export default function AccessGate({ children }: { children: ReactNode }) {
     const { value: token } = await Preferences.get({ key: TOKEN_KEY });
     if (!token) { setState('register'); return; }
     if (!navigator.onLine) { setState('offline'); return; }
-    const { data, error } = await supabase.rpc('nexora_check_access', { p_access_token: token });
-    if (error || !data?.status) {
+    try {
+      const { data, error } = await supabase.rpc('nexora_check_access', { p_access_token: token });
+      if (error || !data?.status) {
+        setState('offline');
+        setMessage(error?.message || 'Could not verify your approval. Please check your internet connection.');
+        return;
+      }
+      setProfile(data.profile || null);
+      setState(data.status as GateState);
+      setMessage('');
+    } catch (error) {
       setState('offline');
-      setMessage(error?.message || 'Could not verify your approval. Please check your internet connection.');
-      return;
+      setMessage(error instanceof Error ? error.message : 'Could not verify approval. Please try again.');
     }
-    setProfile(data.profile || null);
-    setState(data.status as GateState);
-    setMessage('');
   }, []);
 
   useEffect(() => {
@@ -73,14 +78,20 @@ export default function AccessGate({ children }: { children: ReactNode }) {
       if (!active) return;
       if (!token) { setState('register'); return; }
       if (!navigator.onLine) { setState('offline'); return; }
-      const { data, error } = await supabase.rpc('nexora_check_access', { p_access_token: token });
-      if (!active) return;
-      if (error || !data?.status) {
+      try {
+        const { data, error } = await supabase.rpc('nexora_check_access', { p_access_token: token });
+        if (!active) return;
+        if (error || !data?.status) {
+          setState('offline');
+          setMessage(error?.message || 'Could not verify your approval. Please connect to the internet.');
+        } else {
+          setProfile(data.profile || null);
+          setState(data.status as GateState);
+        }
+      } catch (error) {
+        if (!active) return;
         setState('offline');
-        setMessage(error?.message || 'Could not verify your approval. Please connect to the internet.');
-      } else {
-        setProfile(data.profile || null);
-        setState(data.status as GateState);
+        setMessage(error instanceof Error ? error.message : 'Could not verify approval. Please try again.');
       }
     };
     void initial();
