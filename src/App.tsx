@@ -448,8 +448,15 @@ export default function App() {
     doc.setFont('helvetica','bold'); doc.text('Address:',m,y+22); doc.setFont('helvetica','normal');
     const addressLines = doc.splitTextToSize(customer.address.trim() || '—', tableW-22);
     doc.text(addressLines.slice(0,2),m+19,y+22);
-    doc.setFont('helvetica','bold');doc.text('Bank:',m,y+34);doc.setFont('helvetica','normal');doc.text((profile.bank_name||'—')+' | Holder: '+(profile.bank_holder_name||'—')+' | A/C: '+(profile.account_number||'—')+' | IFSC: '+(profile.ifsc_code||'—'),m+12,y+34);
-    y=101; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
+    doc.setFont('helvetica','bold'); doc.text('Company:',m,y+34); doc.setFont('helvetica','normal');
+    const companyLines = doc.splitTextToSize(profile.company_name || '—', tableW-28);
+    doc.text(companyLines, m+22, y+34);
+    doc.setFont('helvetica','bold'); doc.text('Bank Details:',m,y+46); doc.setFont('helvetica','normal');
+    const bankDetails = [profile.bank_name ? 'Bank: '+profile.bank_name : '', profile.bank_holder_name ? 'Account Holder: '+profile.bank_holder_name : '', profile.account_number ? 'A/C No: '+profile.account_number : '', profile.ifsc_code ? 'IFSC: '+profile.ifsc_code : ''].filter(Boolean).join(' | ') || 'Please update bank details in My Profile.';
+    const bankLines = doc.splitTextToSize(bankDetails, tableW-28);
+    doc.text(bankLines, m+28, y+46);
+    y = Math.max(101, y+46+(bankLines.length*4.5)+12);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
     doc.text('WEIGHT DETAILS',m,y); y+=8;
     doc.setFillColor(235,241,247); doc.rect(m,y-5,tableW,12,'F');
     doc.setFontSize(8); doc.setTextColor(43,68,94);
