@@ -83,6 +83,17 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Only customer accounts can be changed here." }, 404);
     }
 
+    // Confirm the customer's Auth email from the Admin app before activation.
+    // This is idempotent: already-confirmed users remain confirmed.
+    if (status === "active") {
+      const { error: confirmError } = await adminClient.auth.admin.updateUserById(userId, {
+        email_confirm: true,
+      });
+      if (confirmError) {
+        return jsonResponse({ error: "Customer email confirmation failed. Please retry approval." }, 500);
+      }
+    }
+
     const { data: updated, error: updateError } = await adminClient
       .from("user_profiles")
       .update({ status, updated_at: new Date().toISOString() })
@@ -90,7 +101,7 @@ Deno.serve(async (req: Request) => {
       .select("user_id, email, status, created_at, full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code")
       .single();
     if (updateError) return jsonResponse({ error: "Customer status update failed." }, 500);
-    return jsonResponse({ customer: updated });
+    return jsonResponse({ customer: updated, email_confirmed: status === "active" });
   }
 
   return jsonResponse({ error: "Unknown admin action." }, 400);
