@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
@@ -6,10 +6,15 @@ import CropPhotoModal from './CropPhotoModal';
 import { Preferences } from '@capacitor/preferences';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { UserProfileContext } from './AccessGate';
+import { supabase } from './lib/supabase';
 
 type Entry = { id: number; raw: string; kg: number; grams: number };
 type OcrWord = { text: string; x0: number; y0: number; x1: number; y1: number };
 type Customer = { name: string; address: string; phone: string };
+type BankDetails = { account_holder_name:string; bank_name:string; account_number:string; ifsc:string; branch:string; upi_id:string };
+const EMPTY_BANK: BankDetails = { account_holder_name:'', bank_name:'', account_number:'', ifsc:'', branch:'', upi_id:'' };
+const ACCESS_TOKEN_KEY = 'nexora-calc-access-token-v1';
 type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[]; totalKg: number; totalGrams: number; rate?: number; totalAmount?: number };
 const STORE = 'nexora-calc-bills-v1';
 
@@ -98,6 +103,9 @@ function downloadPdfBlob(blob: Blob, fileName: string) {
 }
 
 export default function App() {
+  const registeredProfile = useContext(UserProfileContext);
+  const [bank, setBank] = useState<BankDetails>(EMPTY_BANK);
+  const [bankBusy, setBankBusy] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [customer, setCustomer] = useState<Customer>({ name: '', address: '', phone: '' });
@@ -133,6 +141,43 @@ export default function App() {
       line.words.push(word.text);
     }
     return lines.sort((a,b)=>a.center-b.center).map(line=>line.words.join(' ')).join('\\n');
+  }
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { value: token } = await Preferences.get({ key: ACCESS_TOKEN_KEY });
+        if (!token || !supabase) return;
+        const { data, error } = await supabase.rpc('nexora_get_bank_details', { p_access_token: token });
+        if (error) throw error;
+        if (active && data) setBank({ ...EMPTY_BANK, ...data });
+      } catch { if (active) setMessage('Bank details could not be loaded.'); }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  async function saveBankDetails() {
+    if (!supabase) { setMessage('Supabase is not configured.'); return; }
+    setBankBusy(true);
+    try {
+      const { value: token } = await Preferences.get({ key: ACCESS_TOKEN_KEY });
+      if (!token) throw new Error('Device approval token is missing.');
+      const { data, error } = await supabase.rpc('nexora_save_bank_details', {
+        p_access_token: token,
+        p_account_holder_name: bank.account_holder_name,
+        p_bank_name: bank.bank_name,
+        p_account_number: bank.account_number,
+        p_ifsc: bank.ifsc,
+        p_branch: bank.branch,
+        p_upi_id: bank.upi_id
+      });
+      if (error) throw error;
+      setBank({ ...EMPTY_BANK, ...(data || bank) });
+      setMessage('Company bank details saved securely.');
+    } catch (error) {
+      setMessage('Bank details could not be saved: ' + (error instanceof Error ? error.message : 'Please try again.'));
+    } finally { setBankBusy(false); }
   }
 
   useEffect(() => {
@@ -302,6 +347,21 @@ export default function App() {
     doc.text(money(totalAmount),w-m-7,y+22,{align:'right'});
     y+=35;doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(90,105,121);
     doc.text('Rate per KG: '+money(numericRate),m+2,y);
+    if (bank.account_holder_name || bank.bank_name || bank.account_number || bank.ifsc || bank.upi_id) {
+      y += 12; if (y > 245) { doc.addPage(); y = 25; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(35,53,73);
+      doc.text('BANK DETAILS',m,y); y += 6;
+      doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      const bankLines = [
+        bank.account_holder_name && 'Account Holder: '+bank.account_holder_name,
+        bank.bank_name && 'Bank: '+bank.bank_name,
+        bank.account_number && 'Account No: '+bank.account_number,
+        bank.ifsc && 'IFSC: '+bank.ifsc,
+        bank.branch && 'Branch: '+bank.branch,
+        bank.upi_id && 'UPI: '+bank.upi_id
+      ].filter(Boolean) as string[];
+      bankLines.forEach(line => { if(y>265){doc.addPage();y=25;} doc.text(line,m,y); y+=5; });
+    }
     y+=18; doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(18,65,110);
     doc.text('Global Nexus',w-m-24,y+3,{align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(105,119,135);
@@ -384,6 +444,22 @@ export default function App() {
       </div>
       <div className="entry-list-heading"><strong>Added weights</strong><span>{entries.length} entries</span></div>
       {entries.length === 0 ? <div className="empty-state">No weight entries added yet. Type a weight above and press ENTER.</div> : <div className="entry-list">{entries.map((entry,index) => <div className="entry-row" key={entry.id}><span className="entry-serial">{index+1}.</span>{editing === entry.id ? <input autoFocus defaultValue={entry.raw} onBlur={event => { updateEntry(entry.id, event.target.value); setEditing(null); }} onKeyDown={event => { if (event.key === 'Enter') { updateEntry(entry.id, event.currentTarget.value); setEditing(null); } }} /> : <strong>{entry.kg} <small>kg</small> {String(entry.grams).padStart(3,'0')} <small>g</small></strong>}<button className="tiny-button" onClick={() => setEditing(entry.id)} aria-label="Edit"><Pencil size={16} /></button><button className="tiny-button danger" onClick={() => setEntries(old => old.filter(item => item.id !== entry.id))} aria-label="Delete"><Trash2 size={16} /></button></div>)}</div>}
+    </section>
+    <section className="customer-card">
+      <div className="section-heading"><div><span className="step">PROFILE</span><h2>My Registration Profile</h2></div><span className="count">Approved account</span></div>
+      <label>Full Name<input readOnly value={registeredProfile?.name || ''} /></label>
+      <label>Email<input readOnly value={registeredProfile?.email || ''} /></label>
+      <label>Mobile Number<input readOnly value={registeredProfile?.mobile_number || ''} /></label>
+      <label>Address<input readOnly value={registeredProfile?.address || ''} /></label>
+      <label>Company Name<input readOnly value={registeredProfile?.company_name || ''} /></label>
+    </section>
+    <section className="customer-card">
+      <div className="section-heading"><div><span className="step">BANK</span><h2>Company Bank Details</h2></div><span className="count">Shown on bill</span></div>
+      {([
+        ['account_holder_name','Account Holder Name'],['bank_name','Bank Name'],['account_number','Account Number'],
+        ['ifsc','IFSC Code'],['branch','Branch'],['upi_id','UPI ID (Optional)']
+      ] as const).map(([key,label])=><label key={key}>{label}<input value={bank[key]} onChange={event=>setBank(old=>({...old,[key]:event.target.value}))} placeholder={label}/></label>)}
+      <button className="primary-action" onClick={saveBankDetails} disabled={bankBusy}>{bankBusy?'Saving…':'Save Bank Details'}</button>
     </section>
     <section className="customer-card">
       <div className="section-heading"><div><span className="step">03</span><h2>Customer details</h2></div><span className="count">Live preview</span></div>
