@@ -46,3 +46,27 @@
 .admin-shell{padding-top:12px}.admin-summary{padding:20px;border-radius:18px;background:linear-gradient(120deg,#102e57,#2365a2);color:#fff;margin:8px 0 16px}.admin-summary>div{display:flex;align-items:center;gap:8px;color:#b8d9f5;font-size:10px;font-weight:800;letter-spacing:1.5px}.admin-summary>strong{display:block;font-size:21px;margin-top:14px}.admin-summary p{font-size:12px;color:#d3e4f3;line-height:1.5;margin:6px 0 12px}.admin-summary>small{font-size:10px;color:#b8d9f5}.admin-list-card{margin-top:0}.admin-customer-list{display:grid;gap:10px}.admin-customer-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px;background:#f7f9fc;border:1px solid #e8eef5;border-radius:13px}.admin-customer-info{display:flex;flex-direction:column;gap:5px;min-width:0}.admin-customer-info>strong{font-size:12px;color:#234363;overflow-wrap:anywhere}.admin-customer-info>small{font-size:10px;color:#8a9aab}.admin-status{width:max-content;padding:4px 7px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:.6px}.admin-status.active{background:#e4f6ec;color:#18834a}.admin-status.inactive{background:#fff0ed;color:#bd5546}.admin-deactivate,.admin-activate{flex:none;display:flex;align-items:center;justify-content:center;gap:5px;border:0;border-radius:9px;padding:9px 10px;font:700 10px Inter,Arial,sans-serif}.admin-deactivate{background:#fff0ed;color:#b84e42}.admin-activate{background:#e5f6ed;color:#16814a}.admin-deactivate:disabled,.admin-activate:disabled{opacity:.55}.admin-open-button{margin:8px 0;width:100%}.admin-footnote{text-align:center;color:#91a0af;font-size:10px;line-height:1.6;padding:0 12px 20px}.admin-list-card .empty-state svg{color:#8aa4bc;margin-bottom:7px}.admin-list-card .empty-state p{margin:5px 0}.admin-list-card .empty-state small{color:#95a4b3}
 
 .admin-status.pending{background:#fff5df;color:#9a6810}
+
+/* Nexora Connect bill branding and professional business profile */
+.profile-trigger{margin-left:auto;display:flex;align-items:center;gap:7px;padding:5px 11px 5px 6px;border:1px solid #dce7f1;border-radius:14px;background:#fff;color:#234d75;font:700 11px Inter,Arial,sans-serif;box-shadow:0 3px 10px #173c660c}
+.profile-trigger-icon{width:31px;height:31px;border-radius:10px;background:linear-gradient(145deg,#e5f1fc,#d7e8f8);display:grid;place-items:center;color:#1d5a91}
+.profile-backdrop{align-items:center;padding:12px}
+.profile-modal{background:#f8fafd;width:min(100%,520px);max-height:94vh;overflow:auto;border-radius:24px;padding:18px;box-shadow:0 22px 65px #061a3350}
+.profile-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:3px 2px 15px}
+.profile-kicker{font-size:9px;font-weight:800;letter-spacing:1.6px;color:#4e8abd}
+.profile-modal-head h2{font-size:21px;letter-spacing:-.5px;color:#183b60;margin:5px 0}
+.profile-modal-head p{font-size:11px;color:#8092a6;line-height:1.5;margin:0}
+.profile-close{width:36px;height:36px;border:0;border-radius:12px;background:#eaf0f6;color:#42627f;display:grid;place-items:center}
+.profile-identity{display:flex;align-items:center;gap:11px;padding:13px;background:linear-gradient(115deg,#102f56,#24639b);border-radius:16px;color:#fff;margin-bottom:13px}
+.profile-avatar{width:43px;height:43px;border-radius:13px;background:#ffffff20;display:grid;place-items:center;color:#d9edff;flex:none}
+.profile-identity>div{min-width:0;flex:1}.profile-identity strong{display:block;font-size:12px;overflow-wrap:anywhere}.profile-identity span:not(.profile-active){display:block;font-size:10px;color:#c0d7eb;margin-top:4px}
+.profile-active{font-size:8px;font-weight:800;letter-spacing:.7px;padding:5px 7px;border-radius:7px;background:#ffffff20;color:#d7edff}
+.profile-fields{background:#fff;border:1px solid #e6edf4;border-radius:16px;padding:14px;margin:11px 0}
+.profile-modal label{display:block;color:#536b83;font-size:10px;font-weight:700;margin:10px 0}
+.profile-modal input{display:block;width:100%;margin-top:6px;border:1px solid #e0e8f0;border-radius:10px;background:#fbfdff;padding:11px 12px;color:#1d3857;font:12px Inter,Arial,sans-serif;outline:none}
+.profile-modal input:focus{border-color:#4387bd;box-shadow:0 0 0 3px #4387bd16}
+.profile-modal input[readonly]{background:#f2f5f8;color:#8b99a8}
+.profile-save{width:100%;margin:13px 0 2px;height:48px}
+.bill-preview{position:relative;isolation:isolate;overflow:hidden}
+.bill-preview:after{content:'NEXORA CONNECT';position:absolute;z-index:-1;left:50%;top:52%;transform:translate(-50%,-50%) rotate(-34deg);white-space:nowrap;font-size:clamp(25px,8vw,44px);font-weight:800;letter-spacing:3px;color:rgba(25,78,125,.045);pointer-events:none}
+.preview-top>div{position:relative}.preview-powered{display:block;margin-top:5px;color:#6d9bc2;font-size:8px;font-weight:800;letter-spacing:1px}
