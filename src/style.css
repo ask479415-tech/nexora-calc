@@ -68,5 +68,7 @@
 .profile-modal input[readonly]{background:#f2f5f8;color:#8b99a8}
 .profile-save{width:100%;margin:13px 0 2px;height:48px}
 .bill-preview{position:relative;isolation:isolate;overflow:hidden}
-.bill-preview:after{content:'NEXORA CONNECT';position:absolute;z-index:-1;left:50%;top:52%;transform:translate(-50%,-50%) rotate(-34deg);white-space:nowrap;font-size:clamp(25px,8vw,44px);font-weight:800;letter-spacing:3px;color:rgba(25,78,125,.045);pointer-events:none}
+.bill-preview:after{content:'NEXORA CONNECT';position:absolute;z-index:0;left:50%;top:52%;transform:translate(-50%,-50%) rotate(-34deg);white-space:nowrap;font-size:clamp(25px,8vw,44px);font-weight:800;letter-spacing:3px;color:rgba(25,78,125,.045);pointer-events:none}
 .preview-top>div{position:relative}.preview-powered{display:block;margin-top:5px;color:#6d9bc2;font-size:8px;font-weight:800;letter-spacing:1px}
+
+.bill-preview>*{position:relative;z-index:1}
