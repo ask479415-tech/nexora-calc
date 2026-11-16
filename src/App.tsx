@@ -438,6 +438,7 @@ export default function App() {
     doc.setFont('helvetica','normal'); doc.setFontSize(8);
     doc.text('Bill No: '+billNo,w-m,23,{align:'right'});
     doc.text('Date: '+now.toLocaleDateString('en-IN'),w-m,30,{align:'right'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(205,224,242); doc.text('POWERED BY NEXORA CONNECT',w-m,8,{align:'right'});
     let y=52; doc.setTextColor(35,53,73); doc.setFont('helvetica','bold'); doc.setFontSize(10);
     doc.text('BUSINESS DETAILS',m,y); doc.setDrawColor(205,215,226); doc.setLineWidth(.35); doc.line(m,y+2,w-m,y+2);
     doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('Company:',m,y+12); doc.setFont('helvetica','normal'); doc.text(doc.splitTextToSize(profile.company_name || registeredName, tableW-25).slice(0,1),m+22,y+12);
@@ -489,6 +490,8 @@ export default function App() {
     doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
     doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text(profile.company_name || registeredName,w/2,291,{align:'center'});
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page++) { doc.setPage(page); doc.setFont('helvetica','bold'); doc.setFontSize(31); doc.setTextColor(246,248,251); doc.text('NEXORA CONNECT',w/2,doc.internal.pageSize.getHeight()/2,{align:'center',angle:35}); }
     try {
       const saved = await Filesystem.writeFile({ path: 'Nexora-Weight-Bill.pdf', data: doc.output('datauristring').split(',')[1], directory: Directory.Cache });
       await Share.share({ title: registeredName + ' Weight Bill', text: 'Weight bill issued by ' + registeredName + '.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
@@ -503,9 +506,9 @@ export default function App() {
       const registeredName = profile.company_name.trim() || profile.full_name.trim() || authEmail || 'Registered Customer';
       const canvas = document.createElement('canvas'); canvas.width = 1080; canvas.height = 1450;
       const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('Could not create bill image.');
-      ctx.fillStyle='#f1f5f9';ctx.fillRect(0,0,1080,1450);ctx.fillStyle='#fff';ctx.fillRect(48,48,984,1354);
+      ctx.fillStyle='#f1f5f9';ctx.fillRect(0,0,1080,1450);ctx.fillStyle='#fff';ctx.fillRect(48,48,984,1354);ctx.save();ctx.translate(540,760);ctx.rotate(-Math.PI/7);ctx.fillStyle='rgba(18,59,112,0.045)';ctx.font='bold 76px Arial';ctx.textAlign='center';ctx.fillText('NEXORA CONNECT',0,0);ctx.restore();
       ctx.fillStyle='#123b70';ctx.fillRect(48,48,984,250);ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(88,96,132,132,24);ctx.fill();
-      ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#c9def2';ctx.font='bold 20px Arial';ctx.fillText('BUSINESS BILL',252,112);ctx.fillStyle='#fff';ctx.font='bold 42px Arial';ctx.fillText(registeredName.slice(0,26),252,165);
+      ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#c9def2';ctx.font='bold 20px Arial';ctx.fillText('BUSINESS BILL',252,112);ctx.textAlign='right';ctx.font='bold 16px Arial';ctx.fillStyle='#c9def2';ctx.fillText('POWERED BY NEXORA CONNECT',990,112);ctx.textAlign='left';ctx.fillStyle='#fff';ctx.font='bold 42px Arial';ctx.fillText(registeredName.slice(0,26),252,165);
       ctx.font='24px Arial';ctx.fillStyle='#c9def2';ctx.fillText('WEIGHT RECORD & BILL',254,210);
       ctx.fillStyle='#243b53';ctx.font='bold 25px Arial';ctx.fillText('BUSINESS DETAILS',92,345);ctx.font='20px Arial';ctx.fillStyle='#64748b';ctx.fillText('Company: '+(profile.company_name||registeredName).slice(0,60),92,382);ctx.fillText('Owner: '+(profile.full_name||'—').slice(0,60),92,415);ctx.fillText('Email: '+(authEmail||'—').slice(0,65),92,448);ctx.fillText('Phone: '+(profile.phone||'—').slice(0,65),92,481);ctx.fillText('Address: '+(profile.address||'—').slice(0,75),92,514);ctx.fillText('Bank: '+(profile.bank_name||'—')+' | Holder: '+(profile.bank_holder_name||'—'),92,547);ctx.fillText('A/C: '+(profile.account_number||'—')+' | IFSC: '+(profile.ifsc_code||'—'),92,580);ctx.fillStyle='#243b53';ctx.font='bold 24px Arial';ctx.fillText('BILL TO: '+(customer.name.trim()||'Walk-in Customer').slice(0,45),92,635);ctx.font='20px Arial';ctx.fillText('Phone: '+(customer.phone.trim()||'—'),92,670);ctx.fillText('Address: '+(customer.address.trim()||'—').slice(0,75),92,705);
       ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,725);ctx.lineTo(988,725);ctx.stroke();
@@ -562,7 +565,7 @@ export default function App() {
     <header className="topbar">
       <img className="brand-logo" src="./nexora-logo.svg" alt="Nexora Digital logo" />
       <div className="brand-copy"><strong>Nexora Digital</strong><small>Weight Calculation & Billing</small></div>
-      <button className="icon-button" onClick={()=>setShowProfile(true)} aria-label="Profile"><Users/></button><button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History /></button>
+      <button className="profile-trigger" onClick={()=>setShowProfile(true)} aria-label="Open business profile"><span className="profile-trigger-icon"><Users size={17}/></span><span>Profile</span></button><button className="icon-button" onClick={() => setShowHistory(true)} aria-label="History"><History /></button>
     </header>
     <section className="hero">
       <div className="hero-copy"><span className="eyebrow">SMART WEIGHT BOOK</span><h1>Weight records,<br />made simple.</h1><p>Scan your page, review the numbers and calculate the total weight.</p></div>
@@ -572,7 +575,12 @@ export default function App() {
       <div className="section-heading"><div><span className="step">CLOUD</span><h2>Cloud Backup & Account</h2></div><span className="count">{authUser ? 'SYNC ON' : 'LOCAL MODE'}</span></div>
       {authUser ? <><p className="status-line">Signed in as {authUser.email||'your account'}. Bills sync to your private cloud account.</p>{isAdmin&&APP_ROLE==='admin'&&<button className="primary-action admin-open-button" type="button" onClick={()=>{setAdminView(true);void loadAdminCustomers();}}><ShieldCheck size={17}/>Open Admin Panel</button>}</> : null}
     </section>
-    {showProfile&&<div className="modal-backdrop"><section className="history-modal"><div className="modal-head"><h2>My Profile</h2><button className="icon-button" onClick={()=>setShowProfile(false)}><X/></button></div>{([['full_name','Full Name'],['phone','Phone Number'],['address','Address'],['company_name','Company Name'],['bank_holder_name','Account Holder Name'],['bank_name','Bank Name'],['account_number','Account Number'],['ifsc_code','IFSC Code']] as const).map(([k,l])=><label key={k}>{l}<input value={profile[k]} onChange={e=>setProfile(p=>({...p,[k]:e.target.value}))}/></label>)}<button className="primary-action" onClick={()=>void saveProfile()}>Save Profile</button></section></div>}
+    {showProfile&&<div className="modal-backdrop profile-backdrop"><section className="profile-modal">
+      <div className="profile-modal-head"><div><span className="profile-kicker">ACCOUNT SETTINGS</span><h2>Business Profile</h2><p>Manage the details displayed on your customer bills.</p></div><button className="profile-close" onClick={()=>setShowProfile(false)} aria-label="Close profile"><X/></button></div>
+      <div className="profile-identity"><div className="profile-avatar"><Users/></div><div><strong>{profile.company_name || "Your Business Name"}</strong><span>{profile.full_name || authEmail || "Account owner"}</span></div><span className="profile-active">CUSTOMER</span></div>
+      <div className="profile-fields">{([['company_name','Company Name'],['full_name','Owner / Full Name'],['phone','Phone Number'],['address','Business Address'],['bank_name','Bank Name'],['bank_holder_name','Account Holder Name'],['account_number','Account Number'],['ifsc_code','IFSC Code']] as const).map(([k,l])=><label key={k}>{l}<input value={profile[k]} onChange={e=>setProfile(p=>({...p,[k]:e.target.value}))}/></label>)}<label>Login Email<input value={authEmail} readOnly/></label></div>
+      <button className="primary-action profile-save" onClick={()=>void saveProfile()}><Check/>Save Business Profile</button>
+    </section></div>}
     <section className="upload-card">
       <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
       <div className="upload-actions">
@@ -612,7 +620,7 @@ export default function App() {
       <p className="hint">Change the rate anytime. Total amount updates automatically.</p>
     </section>
     <section className="bill-preview">
-      <div className="preview-top"><div><span className="eyebrow">BUSINESS BILL</span><h2>{profile.company_name.trim() || profile.full_name.trim() || authEmail || 'Registered Customer'}</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
+      <div className="preview-top"><div><span className="eyebrow">BUSINESS BILL</span><small className="preview-powered">POWERED BY NEXORA CONNECT</small><h2>{profile.company_name.trim() || profile.full_name.trim() || authEmail || 'Registered Customer'}</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
       <div className="preview-customer"><strong>Business Details</strong><span>Company: {profile.company_name || '—'} • Owner: {profile.full_name || '—'}</span><span>Email: {authEmail || '—'} • Phone: {profile.phone || '—'}</span><p>Address: {profile.address || '—'}</p><p>Bank: {profile.bank_name || '—'} • Holder: {profile.bank_holder_name || '—'} • A/C: {profile.account_number || '—'} • IFSC: {profile.ifsc_code || '—'}</p><strong>Bill To: {customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
       <div className="preview-summary"><div><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong><small>Rate: {money(numericRate)} / KG</small></div></div>
