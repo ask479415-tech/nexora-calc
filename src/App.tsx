@@ -116,6 +116,7 @@ export default function App() {
   const [profile,setProfile]=useState<Profile>(EMPTY_PROFILE);
   const [registration,setRegistration]=useState<Profile>(EMPTY_PROFILE);
   const [showProfile,setShowProfile]=useState(false);
+  const [profileEditing,setProfileEditing]=useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminView, setAdminView] = useState(false);
   const [adminCustomers, setAdminCustomers] = useState<AdminCustomer[]>([]);
@@ -272,7 +273,7 @@ export default function App() {
     else setMessage('Signed out. Local bills remain on this device.');
   }
 
-  async function saveProfile(){if(!authUser)return;const {error}=await supabase.from('user_profiles').update({...profile,updated_at:new Date().toISOString()}).eq('user_id',authUser.id);setMessage(error?'Profile update failed: '+error.message:'Profile saved. Updated bank details will appear on new bills.');setShowProfile(false);}
+  async function saveProfile(){if(!authUser)return;const {error}=await supabase.from('user_profiles').update({...profile,updated_at:new Date().toISOString()}).eq('user_id',authUser.id);setMessage(error?'Profile update failed: '+error.message:'Profile saved. Updated business details will appear on new bills.');if(!error)setProfileEditing(false);}
 
   async function loadAdminCustomers() {
     setAdminLoading(true);
@@ -576,10 +577,10 @@ export default function App() {
       {authUser ? <><p className="status-line">Signed in as {authUser.email||'your account'}. Bills sync to your private cloud account.</p>{isAdmin&&APP_ROLE==='admin'&&<button className="primary-action admin-open-button" type="button" onClick={()=>{setAdminView(true);void loadAdminCustomers();}}><ShieldCheck size={17}/>Open Admin Panel</button>}</> : null}
     </section>
     {showProfile&&<div className="modal-backdrop profile-backdrop"><section className="profile-modal">
-      <div className="profile-modal-head"><div><span className="profile-kicker">ACCOUNT SETTINGS</span><h2>Business Profile</h2><p>Manage the details displayed on your customer bills.</p></div><button className="profile-close" onClick={()=>setShowProfile(false)} aria-label="Close profile"><X/></button></div>
+      <div className="profile-modal-head"><div><span className="profile-kicker">ACCOUNT SETTINGS</span><h2>Business Profile</h2><p>{profileEditing?'Edit your business details below.':'View your registered business details.'}</p></div><button className="profile-close" onClick={()=>{setShowProfile(false);setProfileEditing(false);}} aria-label="Close profile"><X/></button></div>
       <div className="profile-identity"><div className="profile-avatar"><Users/></div><div><strong>{profile.company_name || "Your Business Name"}</strong><span>{profile.full_name || authEmail || "Account owner"}</span></div><span className="profile-active">CUSTOMER</span></div>
-      <div className="profile-fields">{([['company_name','Company Name'],['full_name','Owner / Full Name'],['phone','Phone Number'],['address','Business Address'],['bank_name','Bank Name'],['bank_holder_name','Account Holder Name'],['account_number','Account Number'],['ifsc_code','IFSC Code']] as const).map(([k,l])=><label key={k}>{l}<input value={profile[k]} onChange={e=>setProfile(p=>({...p,[k]:e.target.value}))}/></label>)}<label>Login Email<input value={authEmail} readOnly/></label></div>
-      <button className="primary-action profile-save" onClick={()=>void saveProfile()}><Check/>Save Business Profile</button>
+      <div className="profile-fields">{([['company_name','Company Name'],['full_name','Owner / Full Name'],['phone','Phone Number'],['address','Business Address'],['bank_name','Bank Name'],['bank_holder_name','Account Holder Name'],['account_number','Account Number'],['ifsc_code','IFSC Code']] as const).map(([k,l])=><label key={k}>{l}<input value={profile[k]} readOnly={!profileEditing} onChange={e=>setProfile(p=>({...p,[k]:e.target.value}))}/></label>)}<label>Login Email<input value={authEmail} readOnly/></label></div>
+      {profileEditing?<div className="profile-actions"><button className="secondary-action profile-cancel" onClick={()=>{setProfile(EMPTY_PROFILE);setProfileEditing(false);void supabase.from('user_profiles').select('full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code').eq('user_id',authUser?.id).maybeSingle().then(({data})=>{if(data)setProfile({...EMPTY_PROFILE,...data});});}}>Cancel</button><button className="primary-action profile-save" onClick={()=>void saveProfile()}><Check/>Save Changes</button></div>:<button className="primary-action profile-save" onClick={()=>setProfileEditing(true)}><Pencil size={17}/>Edit Profile</button>}
     </section></div>}
     <section className="upload-card">
       <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
