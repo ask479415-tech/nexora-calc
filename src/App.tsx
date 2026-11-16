@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { CapacitorPluginMlKitTextRecognition } from '@pantrist/capacitor-plugin-ml-kit-text-recognition';
+import { DocumentScanner } from '@capacitor-mlkit/document-scanner';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X, Users, UserCheck, UserX, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
@@ -51,6 +52,16 @@ function extractWeightRows(ocrText: string): Entry[] {
   }
   return rows;
 }
+async function scannedUriToFile(uri: string): Promise<File> {
+  const result = await Filesystem.readFile({ path: uri });
+  const base64 = typeof result.data === 'string' ? result.data : '';
+  if (!base64) throw new Error('The scanned image could not be opened.');
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new File([bytes], 'nexora-smart-scan.jpg', { type: 'image/jpeg' });
+}
+
 async function fileToBase64(file: File): Promise<string> {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -331,6 +342,36 @@ export default function App() {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
     if (file) setCropFile(file);
+  }
+
+  async function openSmartScanner(source: 'camera' | 'gallery') {
+    if (Capacitor.getPlatform() !== 'android') {
+      (source === 'camera' ? cameraRef.current : galleryRef.current)?.click();
+      return;
+    }
+    setBusy(true);
+    setMessage('Opening Google Smart Document Scanner...');
+    try {
+      const result = await DocumentScanner.scanDocument({
+        galleryImportAllowed: true,
+        pageLimit: 1,
+        resultFormats: 'JPEG',
+        scannerMode: 'FULL'
+      });
+      const uri = result.scannedImages?.[0];
+      if (!uri) {
+        setMessage('No photo was selected. You can try scanning again.');
+        setBusy(false);
+        return;
+      }
+      const file = await scannedUriToFile(uri);
+      setBusy(false);
+      await scan(file);
+    } catch (error) {
+      setBusy(false);
+      setMessage('Google Smart Scanner is unavailable right now. Opening the regular photo picker instead.');
+      (source === 'camera' ? cameraRef.current : galleryRef.current)?.click();
+    }
   }
 
   async function scan(file?: File) {
@@ -627,13 +668,13 @@ export default function App() {
     <section className="upload-card">
       <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">SMART OCR</span></div>
       <div className="upload-actions">
-        <button className="primary-action" onClick={() => cameraRef.current?.click()} disabled={busy}><Camera />Camera</button>
-        <button className="secondary-action" onClick={() => galleryRef.current?.click()} disabled={busy}><ImagePlus />Gallery</button>
+        <button className="primary-action" onClick={() => void openSmartScanner('camera')} disabled={busy}><Camera />Smart Camera</button>
+        <button className="secondary-action" onClick={() => void openSmartScanner('gallery')} disabled={busy}><ImagePlus />Gallery Scan</button>
       </div>
       <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={choosePhoto} />
       <input ref={galleryRef} hidden type="file" accept="image/*" onChange={choosePhoto} />
       <p className="status-line">{busy && <RefreshCw className="spin" size={15} />} {message}</p>
-      <p className="hint">Example: 44,100 = 44 kg 100 g. Android uses Google ML Kit on-device OCR; web scanning uses the existing Tesseract engine. Always check detected entries before calculating.</p>
+      <p className="hint">Example: 44,100 = 44 kg 100 g. Android opens Google's smart document scanner for auto-crop, cleanup and gallery import, then reads text with on-device ML Kit. First use may need internet to download Google's scanner module. Always verify the weights.</p>
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
