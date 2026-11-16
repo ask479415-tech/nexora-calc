@@ -5,6 +5,14 @@ const config: CapacitorConfig = {
   appName: 'Nexora Digital Calculator',
   webDir: 'dist',
   bundledWebRuntime: false,
+  plugins: {
+    LiveUpdate: {
+      autoBlockRolledBackBundles: true,
+      autoDeleteBundles: true,
+      autoUpdateStrategy: 'none',
+      readyTimeout: 15000,
+    },
+  },
 };
 
 export default config;
