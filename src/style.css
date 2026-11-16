@@ -72,3 +72,5 @@
 .preview-top>div{position:relative}.preview-powered{display:block;margin-top:5px;color:#6d9bc2;font-size:8px;font-weight:800;letter-spacing:1px}
 
 .bill-preview>*{position:relative;z-index:1}
+
+.profile-actions{display:grid;grid-template-columns:.75fr 1.5fr;gap:10px;margin:13px 0 2px}.profile-actions .profile-save{margin:0}.profile-cancel{height:48px;border:0;border-radius:12px;font:700 12px Inter,Arial,sans-serif}.profile-modal input[readonly]:not([value]){cursor:default}
