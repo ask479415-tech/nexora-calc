@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Script, TextRecognition } from '@capacitor-mlkit/text-recognition';
+import { CapacitorPluginMlKitTextRecognition } from '@pantrist/capacitor-plugin-ml-kit-text-recognition';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X, Users, UserCheck, UserX, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
@@ -345,15 +345,25 @@ export default function App() {
       if (Capacitor.isNativePlatform()) {
         // Android/iOS: bundled Google ML Kit Latin model runs on-device without a cloud OCR request.
         setMessage('Scanning on this device with Google ML Kit...');
-        const saved = await Filesystem.writeFile({
-          path: `nexora-smart-scan-${Date.now()}.jpg`,
-          data: await fileToBase64(file),
-          directory: Directory.Cache
+        const result = await CapacitorPluginMlKitTextRecognition.detectText({
+          base64Image: await fileToBase64(file)
         });
-        const result = await TextRecognition.processImage({ path: saved.uri, script: Script.Latin });
         bestText = result.text || '';
         bestRows = extractWeightRows(bestText);
-        setOcrImageSize({ width: 1, height: 1 });
+        const bitmap = await createImageBitmap(file);
+        setOcrImageSize({ width: bitmap.width, height: bitmap.height });
+        bitmap.close();
+        fullPageWords = (result.blocks || []).flatMap(block =>
+          (block.lines || []).flatMap(line =>
+            (line.elements || []).map(element => ({
+              text: element.text,
+              x0: element.boundingBox.left,
+              y0: element.boundingBox.top,
+              x1: element.boundingBox.right,
+              y1: element.boundingBox.bottom
+            }))
+          )
+        );
       } else {
         // Web/PWA fallback: keep the existing Tesseract flow and word-selection review.
         if (!workerRef.current) workerRef.current = await createWorker('eng');
