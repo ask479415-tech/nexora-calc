@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { LiveUpdate } from '@capawesome/capacitor-live-update';
 import { CapacitorPluginMlKitTextRecognition } from '@pantrist/capacitor-plugin-ml-kit-text-recognition';
 import { DocumentScanner } from '@capacitor-mlkit/document-scanner';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X, Users, UserCheck, UserX, ShieldCheck, ArrowLeft, Scan } from 'lucide-react';
@@ -18,6 +19,9 @@ type SavedBill = { id: number; date: string; customer: Customer; entries: Entry[
 type Profile = { full_name:string; phone:string; address:string; company_name:string; bank_holder_name:string; bank_name:string; account_number:string; ifsc_code:string };
 type AdminCustomer = Profile & { user_id:string; email:string|null; status:'pending'|'active'|'inactive'; created_at:string };
 const APP_ROLE = (import.meta as any).env.VITE_APP_ROLE || 'customer';
+const APP_BUNDLE_VERSION = (import.meta as any).env.VITE_APP_BUNDLE_VERSION || 'local';
+const LIVE_UPDATE_BASE = 'https://ask479415-tech.github.io/nexora-calc/updates';
+type LiveUpdateManifest = { bundleId: string; version: string; url: string; checksum: string; nativeVersionCode: string; notes?: string };
 const STORE = 'nexora-calc-bills-v1';
 const EMPTY_PROFILE:Profile={full_name:'',phone:'',address:'',company_name:'',bank_holder_name:'',bank_name:'',account_number:'',ifsc_code:''};
 function companyInitials(name: string): string {
@@ -159,6 +163,11 @@ export default function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [showLoginPage, setShowLoginPage] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [updateBusy,setUpdateBusy]=useState(false);
+  const [updatePending,setUpdatePending]=useState(false);
+  const [updateProgress,setUpdateProgress]=useState(0);
+  const [updateMessage,setUpdateMessage]=useState('Check for the latest app improvements.');
+  const [pendingBundleId,setPendingBundleId]=useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
@@ -616,6 +625,56 @@ export default function App() {
     setEntries(bill.entries); setCustomer(bill.customer || { name: '', address: '', phone: '' }); setRate(String(typeof bill.rate === 'number' ? bill.rate : 20)); setShowHistory(false); setMessage('Previous bill loaded.');
   }
 
+
+  async function checkForAppUpdates() {
+    if (!Capacitor.isNativePlatform()) {
+      setUpdateMessage('In-app updates are available in the installed Android app.');
+      return;
+    }
+    setUpdateBusy(true); setUpdatePending(false); setUpdateProgress(0); setUpdateMessage('Checking for updates…');
+    let progressListener: { remove: () => Promise<void> } | null = null;
+    try {
+      const response = await fetch(LIVE_UPDATE_BASE + '/' + APP_ROLE + '.json?cache=' + Date.now(), { cache: 'no-store' });
+      if (!response.ok) throw new Error('Update server is not reachable. Please try again later.');
+      const manifest = await response.json() as LiveUpdateManifest;
+      if (!manifest.bundleId || !manifest.url || !manifest.checksum || !manifest.nativeVersionCode) throw new Error('Update information is incomplete.');
+      const nativeVersionCode = await LiveUpdate.getVersionCode();
+      if (String(nativeVersionCode) !== String(manifest.nativeVersionCode)) {
+        setUpdateMessage('A native app update is required. Please contact support before updating.');
+        return;
+      }
+      if (manifest.bundleId === APP_BUNDLE_VERSION) {
+        setUpdateMessage('Your app is already up to date.');
+        return;
+      }
+      setUpdateMessage('A new update is available. Downloading safely…');
+      progressListener = await LiveUpdate.addListener('downloadBundleProgress', event => setUpdateProgress(Math.round(event.progress * 100)));
+      await LiveUpdate.downloadBundle({ url: manifest.url, bundleId: manifest.bundleId, checksum: manifest.checksum });
+      await LiveUpdate.setNextBundle({ bundleId: manifest.bundleId });
+      setPendingBundleId(manifest.bundleId);
+      setUpdatePending(true);
+      setUpdateMessage('Version ' + manifest.version + ' is ready. Apply it when convenient.');
+    } catch (error) {
+      setUpdateMessage(error instanceof Error ? error.message : 'Could not check for updates.');
+    } finally {
+      if (progressListener) await progressListener.remove().catch(() => undefined);
+      setUpdateBusy(false);
+    }
+  }
+
+  async function applyAppUpdate() {
+    if (!pendingBundleId) return;
+    setUpdateBusy(true); setUpdateMessage('Applying update…');
+    try {
+      await LiveUpdate.reload();
+    } catch (error) {
+      setUpdateMessage(error instanceof Error ? error.message : 'Could not apply the update. Restart the app and try again.');
+      setUpdateBusy(false);
+    }
+  }
+
+  useEffect(()=>{ if (Capacitor.isNativePlatform()) void LiveUpdate.ready().catch(()=>undefined); },[]);
+
   useEffect(()=>{if(isAdmin && APP_ROLE==='admin' && adminView) void loadAdminCustomers();},[isAdmin,adminView]);
 
   if (showSplash) return <div className="splash-screen">
@@ -667,6 +726,13 @@ export default function App() {
     {showProfile&&<div className="modal-backdrop profile-backdrop"><section className="profile-modal">
       <div className="profile-modal-head"><div><span className="profile-kicker">ACCOUNT SETTINGS</span><h2>Business Profile</h2><p>{profileEditing?'Edit your business details below.':'View your registered business details.'}</p></div><button className="profile-close" onClick={()=>{setShowProfile(false);setProfileEditing(false);}} aria-label="Close profile"><X/></button></div>
       <div className="profile-identity"><div className="profile-avatar"><Users/></div><div><strong>{profile.company_name || "Your Business Name"}</strong><span>{profile.full_name || authEmail || "Account owner"}</span></div><span className="profile-active">CUSTOMER</span></div>
+      <section className="app-update-panel">
+        <div className="app-update-heading"><div><strong>App Updates</strong><small>Get new features without downloading another APK.</small></div><span className="app-update-version">v{APP_BUNDLE_VERSION.slice(0,7)}</span></div>
+        <p className="status-line">{updateMessage}{updateBusy && updateProgress > 0 ? ' ' + updateProgress + '%' : ''}</p>
+        {updateBusy && updateProgress > 0 && <div className="app-update-progress"><span style={{width:updateProgress + '%'}}/></div>}
+        {updatePending ? <button className="primary-action" type="button" onClick={()=>void applyAppUpdate()} disabled={updateBusy}><RefreshCw size={17}/> Apply Update & Restart</button> : <button className="secondary-action" type="button" onClick={()=>void checkForAppUpdates()} disabled={updateBusy}><RefreshCw size={17} className={updateBusy?'spin':''}/> {updateBusy?'Checking…':'Check for Updates'}</button>}
+      </section>
+
       <div className="profile-fields">{([['company_name','Company Name'],['full_name','Owner / Full Name'],['phone','Phone Number'],['address','Business Address'],['bank_name','Bank Name'],['bank_holder_name','Account Holder Name'],['account_number','Account Number'],['ifsc_code','IFSC Code']] as const).map(([k,l])=><label key={k}>{l}<input value={profile[k]} readOnly={!profileEditing} onChange={e=>setProfile(p=>({...p,[k]:e.target.value}))}/></label>)}<label>Login Email<input value={authEmail} readOnly/></label></div>
       {profileEditing?<div className="profile-actions"><button className="secondary-action profile-cancel" onClick={()=>{setProfile(EMPTY_PROFILE);setProfileEditing(false);void supabase.from('user_profiles').select('full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code').eq('user_id',authUser?.id).maybeSingle().then(({data})=>{if(data)setProfile({...EMPTY_PROFILE,...data});});}}>Cancel</button><button className="primary-action profile-save" onClick={()=>void saveProfile()}><Check/>Save Changes</button></div>:<button className="primary-action profile-save" onClick={()=>setProfileEditing(true)}><Pencil size={17}/>Edit Profile</button>}
     </section></div>}
