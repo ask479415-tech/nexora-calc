@@ -420,7 +420,7 @@ export default function App() {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const w = doc.internal.pageSize.getWidth(), m = 16, now = new Date(), tableW = w - 2 * m;
     const billNo = 'NXC-' + String(now.getTime()).slice(-8);
-    const registeredName = profile.full_name.trim() || authEmail || 'Registered Customer';
+    const registeredName = profile.company_name.trim() || profile.full_name.trim() || authEmail || 'Registered Customer';
     doc.setFillColor(18, 42, 72); doc.rect(0, 0, w, 43, 'F');
     doc.setFillColor(35, 101, 162); doc.roundedRect(m, 9, 25, 25, 4, 4, 'F');
     doc.setDrawColor(225, 242, 255); doc.setLineWidth(1.2);
@@ -428,7 +428,7 @@ export default function App() {
     doc.line(m+7,19,m+4,27); doc.line(m+18,19,m+21,27);
     doc.line(m+2,27,m+8,27); doc.line(m+17,27,m+23,27);
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(19);
-    doc.setFontSize(8); doc.text('POWERED BY NEXORA DIGITAL',m+32,9);
+    doc.setFontSize(8); doc.text('BUSINESS BILL',m+32,9);
     doc.setFontSize(17); doc.text(doc.splitTextToSize(registeredName, tableW-90).slice(0,1),m+32,20);
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(198,216,235);
     doc.text('WEIGHT RECORD & BILL',m+32,28);
@@ -439,11 +439,11 @@ export default function App() {
     doc.text('Bill No: '+billNo,w-m,23,{align:'right'});
     doc.text('Date: '+now.toLocaleDateString('en-IN'),w-m,30,{align:'right'});
     let y=52; doc.setTextColor(35,53,73); doc.setFont('helvetica','bold'); doc.setFontSize(10);
-    doc.text('REGISTERED ACCOUNT',m,y); doc.setDrawColor(205,215,226); doc.setLineWidth(.35); doc.line(m,y+2,w-m,y+2);
-    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('Name:',m,y+12); doc.setFont('helvetica','normal'); doc.text(registeredName,m+18,y+12);
-    doc.setFont('helvetica','bold'); doc.text('Email:',m,y+21); doc.setFont('helvetica','normal'); doc.text(authEmail || '—',m+18,y+21);
+    doc.text('BUSINESS DETAILS',m,y); doc.setDrawColor(205,215,226); doc.setLineWidth(.35); doc.line(m,y+2,w-m,y+2);
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('Company:',m,y+12); doc.setFont('helvetica','normal'); doc.text(doc.splitTextToSize(profile.company_name || registeredName, tableW-25).slice(0,1),m+22,y+12);
+    doc.setFont('helvetica','bold'); doc.text('Owner:',m,y+21); doc.setFont('helvetica','normal'); doc.text(profile.full_name || '—',m+18,y+21);
     doc.setFont('helvetica','bold'); doc.text('Phone:',m,y+30); doc.setFont('helvetica','normal'); doc.text(profile.phone || '—',m+18,y+30);
-    doc.setFont('helvetica','bold'); doc.text('Address:',m,y+39); doc.setFont('helvetica','normal');
+    doc.setFont('helvetica','bold'); doc.text('Email:',m,y+39); doc.setFont('helvetica','normal'); doc.text(authEmail || '—',m+18,y+39);\n    doc.setFont('helvetica','bold'); doc.text('Address:',m,y+48); doc.setFont('helvetica','normal');
     const registrationAddress = doc.splitTextToSize(profile.address || '—', tableW-24).slice(0,2); doc.text(registrationAddress,m+20,y+39);
     y += 43 + registrationAddress.length*4.5 + 8;
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('BILL TO',m,y); doc.line(m,y+2,w-m,y+2); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,105,121);
@@ -487,15 +487,15 @@ export default function App() {
     y+=35;doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(90,105,121);
     doc.text('Rate per KG: '+money(numericRate),m+2,y);
     y+=18; doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(18,65,110);
-    doc.text(registeredName,w-m-24,y+3,{align:'center'});
+    doc.text(profile.company_name || registeredName,w-m-24,y+3,{align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(105,119,135);
     doc.text('Authorised Signature',w-m-24,y+9,{align:'center'});
     doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
-    doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text(registeredName,w/2,291,{align:'center'});
+    doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text(profile.company_name || registeredName,w/2,291,{align:'center'});
     try {
       const saved = await Filesystem.writeFile({ path: 'Nexora-Weight-Bill.pdf', data: doc.output('datauristring').split(',')[1], directory: Directory.Cache });
-      await Share.share({ title: registeredName + ' Weight Bill', text: 'Weight bill issued by ' + registeredName + '. Powered by Nexora Digital.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
+      await Share.share({ title: registeredName + ' Weight Bill', text: 'Weight bill issued by ' + registeredName + '.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
       setMessage('PDF created. Choose WhatsApp, Drive or Save to Files from the Android share panel.');
     } catch (error) {
       try { doc.save('Nexora-Weight-Bill.pdf'); setMessage('PDF generated. Check your Downloads folder.'); }
@@ -509,18 +509,18 @@ export default function App() {
       const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('Could not create bill image.');
       ctx.fillStyle='#f1f5f9';ctx.fillRect(0,0,1080,1450);ctx.fillStyle='#fff';ctx.fillRect(48,48,984,1354);
       ctx.fillStyle='#123b70';ctx.fillRect(48,48,984,250);ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(88,96,132,132,24);ctx.fill();
-      ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#c9def2';ctx.font='bold 20px Arial';ctx.fillText('POWERED BY NEXORA DIGITAL',252,112);ctx.fillStyle='#fff';ctx.font='bold 42px Arial';ctx.fillText(registeredName.slice(0,26),252,165);
+      ctx.fillStyle='#123b70';ctx.font='bold 94px Arial';ctx.fillText('N',123,198);ctx.fillStyle='#c9def2';ctx.font='bold 20px Arial';ctx.fillText('BUSINESS BILL',252,112);ctx.fillStyle='#fff';ctx.font='bold 42px Arial';ctx.fillText(registeredName.slice(0,26),252,165);
       ctx.font='24px Arial';ctx.fillStyle='#c9def2';ctx.fillText('WEIGHT RECORD & BILL',254,210);
-      ctx.fillStyle='#243b53';ctx.font='bold 25px Arial';ctx.fillText('REGISTERED ACCOUNT',92,345);ctx.font='20px Arial';ctx.fillStyle='#64748b';ctx.fillText('Name: '+registeredName.slice(0,60),92,382);ctx.fillText('Email: '+(authEmail||'—').slice(0,65),92,415);ctx.fillText('Phone: '+(profile.phone||'—').slice(0,65),92,448);ctx.fillText('Address: '+(profile.address||'—').slice(0,75),92,481);ctx.fillStyle='#243b53';ctx.font='bold 24px Arial';ctx.fillText('BILL TO: '+(customer.name.trim()||'Walk-in Customer').slice(0,45),92,535);ctx.font='20px Arial';ctx.fillText('Phone: '+(customer.phone.trim()||'—'),92,570);ctx.fillText('Address: '+(customer.address.trim()||'—').slice(0,75),92,605);
-      ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,625);ctx.lineTo(988,625);ctx.stroke();
+      ctx.fillStyle='#243b53';ctx.font='bold 25px Arial';ctx.fillText('BUSINESS DETAILS',92,345);ctx.font='20px Arial';ctx.fillStyle='#64748b';ctx.fillText('Company: '+(profile.company_name||registeredName).slice(0,60),92,382);ctx.fillText('Owner: '+(profile.full_name||'—').slice(0,60),92,415);ctx.fillText('Email: '+(authEmail||'—').slice(0,65),92,448);ctx.fillText('Phone: '+(profile.phone||'—').slice(0,65),92,481);ctx.fillText('Address: '+(profile.address||'—').slice(0,75),92,514);ctx.fillText('Bank: '+(profile.bank_name||'—')+' | Holder: '+(profile.bank_holder_name||'—'),92,547);ctx.fillText('A/C: '+(profile.account_number||'—')+' | IFSC: '+(profile.ifsc_code||'—'),92,580);ctx.fillStyle='#243b53';ctx.font='bold 24px Arial';ctx.fillText('BILL TO: '+(customer.name.trim()||'Walk-in Customer').slice(0,45),92,635);ctx.font='20px Arial';ctx.fillText('Phone: '+(customer.phone.trim()||'—'),92,670);ctx.fillText('Address: '+(customer.address.trim()||'—').slice(0,75),92,705);
+      ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,725);ctx.lineTo(988,725);ctx.stroke();
       ctx.fillStyle='#eaf0f6';ctx.fillRect(92,645,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,686);ctx.fillText('WEIGHT',360,686);ctx.textAlign='right';ctx.fillText('GRAMS',950,686);ctx.textAlign='left';
-      let y=760;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
+      let y=820;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
       y=Math.max(y+50,1000);ctx.fillStyle='#123b70';ctx.fillRect(92,y,896,190);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.fillText('TOTAL WEIGHT',125,y+48);ctx.fillStyle='#fff';ctx.font='bold 34px Arial';ctx.fillText(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',125,y+105);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.textAlign='right';ctx.fillText('TOTAL AMOUNT',950,y+48);ctx.fillStyle='#fff';ctx.font='bold 38px Arial';ctx.fillText(money(totalAmount),950,y+105);ctx.fillStyle='#c9def2';ctx.font='20px Arial';ctx.fillText('Rate: '+money(numericRate)+' / KG',950,y+150);ctx.textAlign='left';
-      ctx.fillStyle='#123b70';ctx.font='bold 30px Arial';ctx.textAlign='center';ctx.fillText(registeredName.slice(0,32),540,1285);ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.fillText('Authorised Signature',540,1320);ctx.fillText('Powered by Nexora Digital',540,1360);ctx.textAlign='left';
+      ctx.fillStyle='#123b70';ctx.font='bold 30px Arial';ctx.textAlign='center';ctx.fillText(registeredName.slice(0,32),540,1285);ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.fillText('Authorised Signature',540,1320);ctx.fillText(profile.company_name||registeredName,540,1360);ctx.textAlign='left';
       const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Bill image export failed.')),'image/png'));
       const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Image conversion failed.'));reader.readAsDataURL(blob);});
       const saved=await Filesystem.writeFile({path:'Nexora-Weight-Bill.png',data:base64,directory:Directory.Cache});
-      await Share.share({title:registeredName+' Bill',text:'Weight bill issued by '+registeredName+'. Powered by Nexora Digital.',url:saved.uri,dialogTitle:'Share bill image'});
+      await Share.share({title:registeredName+' Bill',text:'Weight bill issued by '+registeredName+'.',url:saved.uri,dialogTitle:'Share bill image'});
       setMessage('Bill image ready. Choose WhatsApp from the Android share panel.');
     } catch(error) { setMessage('Bill image could not be shared: '+(error instanceof Error?error.message:'Please try again.')); }
   }
@@ -616,8 +616,8 @@ export default function App() {
       <p className="hint">Change the rate anytime. Total amount updates automatically.</p>
     </section>
     <section className="bill-preview">
-      <div className="preview-top"><div><span className="eyebrow">POWERED BY NEXORA DIGITAL</span><h2>{profile.full_name.trim() || authEmail || 'Registered Customer'}</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
-      <div className="preview-customer"><strong>Registered Account</strong><span>{profile.full_name.trim() || authEmail || 'Registered Customer'} • {authEmail || '—'}</span><span>{profile.phone || '—'}</span><p>{profile.address || '—'}</p><strong>Bill To: {customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p><p>Company: {profile.company_name||'—'}</p><p>Bank: {profile.bank_name||'—'} • Holder: {profile.bank_holder_name||'—'} • A/C: {profile.account_number||'—'} • IFSC: {profile.ifsc_code||'—'}</p></div>
+      <div className="preview-top"><div><span className="eyebrow">BUSINESS BILL</span><h2>{profile.company_name.trim() || profile.full_name.trim() || authEmail || 'Registered Customer'}</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
+      <div className="preview-customer"><strong>Business Details</strong><span>Company: {profile.company_name || '—'} • Owner: {profile.full_name || '—'}</span><span>Email: {authEmail || '—'} • Phone: {profile.phone || '—'}</span><p>Address: {profile.address || '—'}</p><p>Bank: {profile.bank_name || '—'} • Holder: {profile.bank_holder_name || '—'} • A/C: {profile.account_number || '—'} • IFSC: {profile.ifsc_code || '—'}</p><strong>Bill To: {customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
       <div className="preview-summary"><div><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong><small>Rate: {money(numericRate)} / KG</small></div></div>
       <div className="preview-sign"><strong>{profile.full_name.trim() || authEmail || 'Registered Customer'}</strong><small>Authorised Signature</small></div>
