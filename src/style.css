@@ -145,3 +145,5 @@
 .premium-empty strong{color:#315b80;font-size:13px}
 .premium-empty button{margin-top:4px}
 @media(max-width:380px){.smart-crop-modal,.premium-review-modal{padding:13px;border-radius:20px}.smart-crop-head h2,.premium-review-head h2{font-size:18px}.premium-correction-row{gap:7px;padding:9px}.premium-weight-input input{font-size:16px}.premium-total-strip strong{font-size:16px}.smart-crop-handle{width:25px;height:25px;margin:-12.5px 0 0 -12.5px}}
+
+.preview-bank-details{display:block;margin-top:5px;padding-top:3px;border-top:1px dashed #dbe4ee}.preview-bank-details>span{display:block;margin:2px 0;overflow-wrap:anywhere}.preview-bank-details .preview-ifsc{margin-top:4px;padding-top:3px;border-top:1px solid #e3eaf2;color:#1d3857;font-weight:700;letter-spacing:.2px}
