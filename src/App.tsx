@@ -697,6 +697,12 @@ export default function App() {
       <button className="icon-button" type="button" onClick={() => void loadAdminCustomers()} aria-label="Refresh customers" disabled={adminLoading}><RefreshCw className={adminLoading ? 'spin' : ''} /></button>
     </header>
     <section className="admin-summary"><div><ShieldCheck size={22} /><span>ADMIN ACCESS</span></div><strong>Customer Management</strong><p>Activate or deactivate customer access to Nexora Calc.</p><small>{adminCustomers.length} total customers • {adminCustomers.filter(c=>c.status==='pending').length} pending</small></section>
+    <section className="app-update-panel">
+      <div className="app-update-heading"><div><strong>App Updates</strong><small>Install compatible improvements without downloading another APK.</small></div><span className="app-update-version">v{APP_BUNDLE_VERSION.slice(0,7)}</span></div>
+      <p className="status-line">{updateMessage}{updateBusy && updateProgress > 0 ? ' ' + updateProgress + '%' : ''}</p>
+      {updateBusy && updateProgress > 0 && <div className="app-update-progress"><span style={{width:updateProgress + '%'}}/></div>}
+      {updatePending ? <button className="primary-action" type="button" onClick={()=>void applyAppUpdate()} disabled={updateBusy}><RefreshCw size={17}/> Apply Update & Restart</button> : <button className="secondary-action" type="button" onClick={()=>void checkForAppUpdates()} disabled={updateBusy}><RefreshCw size={17} className={updateBusy?'spin':''}/> {updateBusy?'Checking…':'Check for Updates'}</button>}
+    </section>
     <section className="customer-card admin-list-card">
       <div className="section-heading"><div><span className="step">USERS</span><h2>Registered Customers</h2></div><span className="count">{adminCustomers.length}</span></div>
       {adminLoading ? <p className="status-line">Loading customer accounts…</p> : adminCustomers.length ? <div className="admin-customer-list">{adminCustomers.map(item => <article className="admin-customer-row" key={item.user_id}>
