@@ -1,4 +1,4 @@
-name: Deploy Nexora Calc Browser Preview
+name: Deploy Nexora Calc Browser Preview and OTA Bundles
 
 on:
   push:
@@ -26,9 +26,47 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Build browser app
-        run: npm run build
-      - name: Upload browser preview
+
+      - name: Build Customer OTA bundle
+        env:
+          VITE_APP_ROLE: customer
+          VITE_APP_BUNDLE_VERSION: ${{ github.sha }}
+        run: |
+          npm run build
+          mkdir -p /tmp/nexora-customer
+          cp -a dist/. /tmp/nexora-customer/
+          (cd /tmp/nexora-customer && zip -qr "$GITHUB_WORKSPACE/customer-update.zip" .)
+
+      - name: Build Admin OTA bundle
+        env:
+          VITE_APP_ROLE: admin
+          VITE_APP_BUNDLE_VERSION: ${{ github.sha }}
+        run: |
+          npm run build
+          mkdir -p /tmp/nexora-admin
+          cp -a dist/. /tmp/nexora-admin/
+          (cd /tmp/nexora-admin && zip -qr "$GITHUB_WORKSPACE/admin-update.zip" .)
+
+      - name: Assemble browser preview and signed-by-checksum OTA manifests
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+          BUNDLE_VERSION: ${{ github.sha }}
+        run: |
+          rm -rf dist
+          mkdir -p dist/updates
+          cp -a /tmp/nexora-customer/. dist/
+          CUSTOMER_FILE="customer-${BUNDLE_VERSION}.zip"
+          ADMIN_FILE="admin-${BUNDLE_VERSION}.zip"
+          mv customer-update.zip "dist/updates/$CUSTOMER_FILE"
+          mv admin-update.zip "dist/updates/$ADMIN_FILE"
+          CUSTOMER_CHECKSUM=$(sha256sum "dist/updates/$CUSTOMER_FILE" | awk '{print $1}')
+          ADMIN_CHECKSUM=$(sha256sum "dist/updates/$ADMIN_FILE" | awk '{print $1}')
+          BASE_URL="https://${REPOSITORY_OWNER}.github.io/${REPOSITORY_NAME}/updates"
+          printf '{"bundleId":"%s","version":"%s","url":"%s/%s","checksum":"%s","nativeVersionCode":"1","notes":"Nexora Calc Customer update"}\n' "$BUNDLE_VERSION" "${BUNDLE_VERSION:0:7}" "$BASE_URL" "$CUSTOMER_FILE" "$CUSTOMER_CHECKSUM" > dist/updates/customer.json
+          printf '{"bundleId":"%s","version":"%s","url":"%s/%s","checksum":"%s","nativeVersionCode":"1","notes":"Nexora Calc Admin update"}\n' "$BUNDLE_VERSION" "${BUNDLE_VERSION:0:7}" "$BASE_URL" "$ADMIN_FILE" "$ADMIN_CHECKSUM" > dist/updates/admin.json
+
+      - name: Upload browser preview and OTA bundles
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -40,6 +78,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy browser preview and OTA bundles
         id: deployment
         uses: actions/deploy-pages@v4
