@@ -444,8 +444,10 @@ export default function App() {
     doc.setFont('helvetica','bold'); doc.text('Owner:',m,y+21); doc.setFont('helvetica','normal'); doc.text(profile.full_name || '—',m+18,y+21);
     doc.setFont('helvetica','bold'); doc.text('Phone:',m,y+30); doc.setFont('helvetica','normal'); doc.text(profile.phone || '—',m+18,y+30);
     doc.setFont('helvetica','bold'); doc.text('Email:',m,y+39); doc.setFont('helvetica','normal'); doc.text(authEmail || '—',m+18,y+39);\n    doc.setFont('helvetica','bold'); doc.text('Address:',m,y+48); doc.setFont('helvetica','normal');
-    const registrationAddress = doc.splitTextToSize(profile.address || '—', tableW-24).slice(0,2); doc.text(registrationAddress,m+20,y+39);
-    y += 43 + registrationAddress.length*4.5 + 8;
+    const registrationAddress = doc.splitTextToSize(profile.address || '—', tableW-24).slice(0,2); doc.text(registrationAddress,m+20,y+48);
+    const businessBankDetails = [profile.bank_name ? 'Bank: '+profile.bank_name : '', profile.bank_holder_name ? 'Holder: '+profile.bank_holder_name : '', profile.account_number ? 'A/C: '+profile.account_number : '', profile.ifsc_code ? 'IFSC: '+profile.ifsc_code : ''].filter(Boolean).join(' | ');
+    if (businessBankDetails) { doc.setFont('helvetica','bold'); doc.text('Bank:',m,y+60); doc.setFont('helvetica','normal'); doc.text(doc.splitTextToSize(businessBankDetails, tableW-22).slice(0,2),m+16,y+60); }
+    y += 65 + registrationAddress.length*4.5 + 8;
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('BILL TO',m,y); doc.line(m,y+2,w-m,y+2); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,105,121);
     doc.setTextColor(35,53,73); doc.setFont('helvetica','bold');
     doc.text('Customer:',m,y+12); doc.setFont('helvetica','normal');
@@ -455,14 +457,7 @@ export default function App() {
     doc.setFont('helvetica','bold'); doc.text('Address:',m,y+22); doc.setFont('helvetica','normal');
     const addressLines = doc.splitTextToSize(customer.address.trim() || '—', tableW-22);
     doc.text(addressLines.slice(0,2),m+19,y+22);
-    doc.setFont('helvetica','bold'); doc.text('Company:',m,y+34); doc.setFont('helvetica','normal');
-    const companyLines = doc.splitTextToSize(profile.company_name || '—', tableW-28);
-    doc.text(companyLines, m+22, y+34);
-    doc.setFont('helvetica','bold'); doc.text('Bank Details:',m,y+46); doc.setFont('helvetica','normal');
-    const bankDetails = [profile.bank_name ? 'Bank: '+profile.bank_name : '', profile.bank_holder_name ? 'Account Holder: '+profile.bank_holder_name : '', profile.account_number ? 'A/C No: '+profile.account_number : '', profile.ifsc_code ? 'IFSC: '+profile.ifsc_code : ''].filter(Boolean).join(' | ') || 'Please update bank details in My Profile.';
-    const bankLines = doc.splitTextToSize(bankDetails, tableW-28);
-    doc.text(bankLines, m+28, y+46);
-    y = Math.max(101, y+46+(bankLines.length*4.5)+12);
+    y = Math.max(101, y+32+(addressLines.length*4.5)+12);
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(35,53,73);
     doc.text('WEIGHT DETAILS',m,y); y+=8;
     doc.setFillColor(235,241,247); doc.rect(m,y-5,tableW,12,'F');
@@ -504,7 +499,7 @@ export default function App() {
   }
   async function shareWhatsApp() {
     try {
-      const registeredName = profile.full_name.trim() || authEmail || 'Registered Customer';
+      const registeredName = profile.company_name.trim() || profile.full_name.trim() || authEmail || 'Registered Customer';
       const canvas = document.createElement('canvas'); canvas.width = 1080; canvas.height = 1450;
       const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('Could not create bill image.');
       ctx.fillStyle='#f1f5f9';ctx.fillRect(0,0,1080,1450);ctx.fillStyle='#fff';ctx.fillRect(48,48,984,1354);
@@ -513,8 +508,8 @@ export default function App() {
       ctx.font='24px Arial';ctx.fillStyle='#c9def2';ctx.fillText('WEIGHT RECORD & BILL',254,210);
       ctx.fillStyle='#243b53';ctx.font='bold 25px Arial';ctx.fillText('BUSINESS DETAILS',92,345);ctx.font='20px Arial';ctx.fillStyle='#64748b';ctx.fillText('Company: '+(profile.company_name||registeredName).slice(0,60),92,382);ctx.fillText('Owner: '+(profile.full_name||'—').slice(0,60),92,415);ctx.fillText('Email: '+(authEmail||'—').slice(0,65),92,448);ctx.fillText('Phone: '+(profile.phone||'—').slice(0,65),92,481);ctx.fillText('Address: '+(profile.address||'—').slice(0,75),92,514);ctx.fillText('Bank: '+(profile.bank_name||'—')+' | Holder: '+(profile.bank_holder_name||'—'),92,547);ctx.fillText('A/C: '+(profile.account_number||'—')+' | IFSC: '+(profile.ifsc_code||'—'),92,580);ctx.fillStyle='#243b53';ctx.font='bold 24px Arial';ctx.fillText('BILL TO: '+(customer.name.trim()||'Walk-in Customer').slice(0,45),92,635);ctx.font='20px Arial';ctx.fillText('Phone: '+(customer.phone.trim()||'—'),92,670);ctx.fillText('Address: '+(customer.address.trim()||'—').slice(0,75),92,705);
       ctx.strokeStyle='#dbe4ee';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(92,725);ctx.lineTo(988,725);ctx.stroke();
-      ctx.fillStyle='#eaf0f6';ctx.fillRect(92,645,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,686);ctx.fillText('WEIGHT',360,686);ctx.textAlign='right';ctx.fillText('GRAMS',950,686);ctx.textAlign='left';
-      let y=820;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
+      ctx.fillStyle='#eaf0f6';ctx.fillRect(92,755,896,64);ctx.fillStyle='#31506f';ctx.font='bold 22px Arial';ctx.fillText('SL NO.',118,796);ctx.fillText('WEIGHT',360,796);ctx.textAlign='right';ctx.fillText('GRAMS',950,796);ctx.textAlign='left';
+      let y=870;entries.forEach((entry,index)=>{if(index%2===0){ctx.fillStyle='#f8fafc';ctx.fillRect(92,y-38,896,58);}ctx.fillStyle='#243b53';ctx.font='24px Arial';ctx.fillText(String(index+1).padStart(2,'0'),118,y);ctx.font='bold 26px Arial';ctx.fillText(entry.kg+' kg',360,y);ctx.textAlign='right';ctx.fillText(String(entry.grams).padStart(3,'0')+' g',950,y);ctx.textAlign='left';y+=62;});
       y=Math.max(y+50,1000);ctx.fillStyle='#123b70';ctx.fillRect(92,y,896,190);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.fillText('TOTAL WEIGHT',125,y+48);ctx.fillStyle='#fff';ctx.font='bold 34px Arial';ctx.fillText(sum.totalKg+' kg '+String(sum.totalGrams).padStart(3,'0')+' g',125,y+105);ctx.fillStyle='#c9def2';ctx.font='bold 24px Arial';ctx.textAlign='right';ctx.fillText('TOTAL AMOUNT',950,y+48);ctx.fillStyle='#fff';ctx.font='bold 38px Arial';ctx.fillText(money(totalAmount),950,y+105);ctx.fillStyle='#c9def2';ctx.font='20px Arial';ctx.fillText('Rate: '+money(numericRate)+' / KG',950,y+150);ctx.textAlign='left';
       ctx.fillStyle='#123b70';ctx.font='bold 30px Arial';ctx.textAlign='center';ctx.fillText(registeredName.slice(0,32),540,1285);ctx.fillStyle='#64748b';ctx.font='22px Arial';ctx.fillText('Authorised Signature',540,1320);ctx.fillText(profile.company_name||registeredName,540,1360);ctx.textAlign='left';
       const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Bill image export failed.')),'image/png'));
@@ -620,7 +615,7 @@ export default function App() {
       <div className="preview-customer"><strong>Business Details</strong><span>Company: {profile.company_name || '—'} • Owner: {profile.full_name || '—'}</span><span>Email: {authEmail || '—'} • Phone: {profile.phone || '—'}</span><p>Address: {profile.address || '—'}</p><p>Bank: {profile.bank_name || '—'} • Holder: {profile.bank_holder_name || '—'} • A/C: {profile.account_number || '—'} • IFSC: {profile.ifsc_code || '—'}</p><strong>Bill To: {customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
       <div className="preview-summary"><div><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong><small>Rate: {money(numericRate)} / KG</small></div></div>
-      <div className="preview-sign"><strong>{profile.full_name.trim() || authEmail || 'Registered Customer'}</strong><small>Authorised Signature</small></div>
+      <div className="preview-sign"><strong>{profile.company_name.trim() || profile.full_name.trim() || authEmail || 'Registered Customer'}</strong><small>Authorised Signature</small></div>
     </section>
     <section className="total-card"><div className="total-top"><span>Total Weight</span><span className="verified"><Check size={14} /> Verified entries</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">{entries.length} entries in total</div></section>
     <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check />Save Bill</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown />PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle />WhatsApp</button></section>
