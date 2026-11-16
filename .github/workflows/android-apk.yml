@@ -27,6 +27,7 @@ jobs:
       - name: Build Customer APK
         env:
           VITE_APP_ROLE: customer
+          VITE_APP_BUNDLE_VERSION: ${{ github.sha }}
         run: |
           npm run build
           npx cap sync android
@@ -47,6 +48,7 @@ jobs:
       - name: Build Admin APK
         env:
           VITE_APP_ROLE: admin
+          VITE_APP_BUNDLE_VERSION: ${{ github.sha }}
         run: |
           npm run build
           npx cap sync android
