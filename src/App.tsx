@@ -163,6 +163,7 @@ export default function App() {
   const [reviewPhoto, setReviewPhoto] = useState<string | null>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
+  const [correctionDrafts, setCorrectionDrafts] = useState<Record<number, string>>({});
   const [ocrText, setOcrText] = useState('');
   const [ocrWords, setOcrWords] = useState<OcrWord[]>([]);
   const [selectedOcrWords, setSelectedOcrWords] = useState<number[]>([]);
@@ -446,6 +447,7 @@ export default function App() {
       setOcrText(bestText);
       setOcrWords(fullPageWords);
       setPendingEntries(bestRows);
+      setCorrectionDrafts(Object.fromEntries(bestRows.map(row => [row.id, row.raw])));
       setReviewPhoto(URL.createObjectURL(file));
       setMessage(bestRows.length ? bestRows.length + ' possible weight rows found. Check the transcription and confirm.' : 'Photo scanned. No clear weight rows found; check the detected text and add/correct entries.');
     } catch (error) {
@@ -457,13 +459,14 @@ export default function App() {
   function confirmPhotoSelection() {
     const chosen = pendingEntries;
     setEntries(chosen);
+    setCorrectionDrafts({});
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
     setReviewPhoto(null); setPendingEntries([]); setOcrText(''); setOcrWords([]); setSelectedOcrWords([]);
     setMessage(chosen.length + ' selected entries are ready for calculation.');
   }
   function cancelPhotoReview() {
     if (reviewPhoto) URL.revokeObjectURL(reviewPhoto);
-    setReviewPhoto(null); setPendingEntries([]); setOcrText(''); setOcrWords([]); setSelectedOcrWords([]);
+    setReviewPhoto(null); setPendingEntries([]); setCorrectionDrafts({}); setOcrText(''); setOcrWords([]); setSelectedOcrWords([]);
     setMessage('Photo selection cancelled.');
   }
   function addEntry() {
@@ -715,12 +718,18 @@ export default function App() {
     <button className="clear-button" onClick={() => { setEntries([]); setMessage('Start a new calculation.'); }}><X size={15} /> Start New Calculation</button>
     <footer>NEXORA DIGITAL <span>•</span> Weight Record & Bill</footer>
     {cropFile && <CropPhotoModal file={cropFile} onCancel={() => setCropFile(null)} onScan={croppedFile => { setCropFile(null); void scan(croppedFile); }} />}
-    {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="review-modal" onClick={event => event.stopPropagation()}>
-      <div className="modal-head"><div><h2>Review All Detected Entries</h2><p>All detected rows are selected. Check the count against your paper; correct any wrong weight after adding.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></div>
-      <div className="review-photo-wrap"><div className="lens-photo"><img src={reviewPhoto} alt="Selected weight page" />{ocrWords.map((word,index)=><span key={index} className="lens-word" style={{left:(word.x0/ocrImageSize.width*100)+'%',top:(word.y0/ocrImageSize.height*100)+'%',width:(Math.max(1,word.x1-word.x0)/ocrImageSize.width*100)+'%',height:(Math.max(1,word.y1-word.y0)/ocrImageSize.height*100)+'%'}}>{word.text}{' '}</span>)}</div></div>
-      <div className="review-tools"><strong>Detected rows: {pendingEntries.length}</strong><span className="selection-help">ছবির লেখার উপর আঙুল চেপে ধরে টেনে Select করুন</span><button type="button" onPointerDown={event=>event.preventDefault()} onClick={()=>{const selection=window.getSelection();const range=selection&&selection.rangeCount?selection.getRangeAt(0):null;const text=range?Array.from(document.querySelectorAll<HTMLElement>('.lens-word')).filter(span=>{try{return range.intersectsNode(span)}catch{return false}}).map(span=>{const node=span.firstChild;if(!node||node.nodeType!==Node.TEXT_NODE)return '';const value=node.textContent||'';const start=range.startContainer===node?range.startOffset:0;const end=range.endContainer===node?range.endOffset:value.length;return value.slice(start,end).replace(/\\s+$/,'');}).filter(Boolean).join(' '):'';if(text){void navigator.clipboard?.writeText(text).then(()=>setMessage('Selected OCR text copied.')).catch(()=>setMessage('Copy failed. Use the phone selection menu.'));}else setMessage('আগে ছবির লেখার উপর চেপে ধরে Select করুন।');}}>Copy selected</button><button type="button" onPointerDown={event=>event.preventDefault()} onClick={()=>{const text=window.getSelection()?.toString().trim()||'';const rows=extractWeightRows(text);if(rows.length)setPendingEntries(rows);else setMessage('Selected text থেকে কোনো weight row পাওয়া যায়নি।');}}>Use selected text</button></div>
-      {pendingEntries.length ? <div className="review-list">{pendingEntries.map((item,index) => <div className="review-row" key={item.id}><label className="review-edit-label">{index+1}. Weight (KG, grams)<input aria-label={'Edit detected weight row ' + (index+1)} defaultValue={item.raw} onBlur={event => { const corrected = parseEntry(event.currentTarget.value); if (corrected) setPendingEntries(old => old.map(row => row.id === item.id ? { ...corrected, id: row.id } : row)); }} /></label><small>Calculated: {item.kg} kg {item.grams} g</small></div>)}</div> : <div className="empty-state">No clear weight rows detected. You can add them manually after closing this photo.</div>}{ocrText && <div className="ocr-transcript"><strong>Full page text recognized (compare with the photo):</strong><pre className="ocr-debug">{ocrText.slice(0,5000)}</pre></div>}
-      <div className="review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Cancel</button><button className="primary-action" onClick={confirmPhotoSelection}><Check />Add All Detected Rows</button></div>
+    {reviewPhoto && <div className="modal-backdrop review-backdrop"><div className="premium-review-modal" onClick={event => event.stopPropagation()}>
+      <header className="premium-review-head"><div><span className="premium-review-kicker"><ShieldCheck size={13}/> SMART SCAN QUALITY CHECK</span><h2>Review detected weights</h2><p>Check every reading against your paper. You can edit, add or remove any row.</p></div><button className="icon-button" onClick={cancelPhotoReview} aria-label="Close"><X /></button></header>
+      <div className="premium-review-photo"><img src={reviewPhoto} alt="Scanned weight list"/><span><Scan size={13}/> Original scanned page</span></div>
+      <div className="premium-review-toolbar"><div><strong>{pendingEntries.length}</strong><span>detected rows</span></div><button type="button" onClick={()=>{const item=parseEntry('1.000');if(item){setPendingEntries(old=>[...old,item]);setCorrectionDrafts(old=>({...old,[item.id]:item.raw}));}}}><Plus size={15}/> Add weight row</button></div>
+      {pendingEntries.length ? <div className="premium-correction-list">{pendingEntries.map((item,index)=><article className="premium-correction-row" key={item.id}>
+        <span className="premium-row-number">{String(index+1).padStart(2,'0')}</span>
+        <div className="premium-row-field"><label htmlFor={`correct-weight-${item.id}`}>WEIGHT ENTRY <span>KG, grams</span></label><div className="premium-weight-input"><input id={`correct-weight-${item.id}`} inputMode="decimal" value={correctionDrafts[item.id] ?? item.raw} onChange={event=>setCorrectionDrafts(old=>({...old,[item.id]:event.target.value}))} onBlur={event=>{const corrected=parseEntry(event.currentTarget.value);if(corrected){setPendingEntries(old=>old.map(row=>row.id===item.id?{...corrected,id:item.id}:row));setCorrectionDrafts(old=>({...old,[item.id]:corrected.raw}));}else setMessage('Please enter a valid weight such as 1.500.');}}/><span>kg</span></div><small>{item.kg} kg + {String(item.grams).padStart(3,'0')} g</small></div>
+        <button className="premium-delete-row" type="button" aria-label={`Delete row ${index+1}`} onClick={()=>{setPendingEntries(old=>old.filter(row=>row.id!==item.id));setCorrectionDrafts(old=>{const next={...old};delete next[item.id];return next;});}}><Trash2 size={17}/></button>
+      </article>)}</div> : <div className="premium-empty"><Scan size={24}/><strong>No clear weight rows found</strong><span>Add your weights manually below.</span><button type="button" onClick={()=>{const item=parseEntry('1.000');if(item){setPendingEntries([item]);setCorrectionDrafts({[item.id]:item.raw});}}}><Plus size={15}/> Add first row</button></div>}
+      <div className="premium-total-strip"><div><span>LIVE TOTAL WEIGHT</span><strong>{total(pendingEntries).totalKg}<small> kg </small>{String(total(pendingEntries).totalGrams).padStart(3,'0')}<small> g</small></strong></div><div><span>ENTRIES CHECKED</span><strong>{pendingEntries.length}</strong></div></div>
+      <details className="premium-ocr-details"><summary>View all text recognized from the photo</summary><pre>{ocrText.slice(0,5000)}</pre></details>
+      <footer className="premium-review-footer"><button className="secondary-action" onClick={cancelPhotoReview}>Retake / Cancel</button><button className="primary-action" onClick={confirmPhotoSelection} disabled={!pendingEntries.length}><Check size={17}/> Confirm {pendingEntries.length} weights</button></footer>
     </div></div>}
     {showHistory && <div className="modal-backdrop" onClick={() => setShowHistory(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="modal-head"><h2>Bill History</h2><button className="icon-button" onClick={() => setShowHistory(false)}><X /></button></div>{bills.length ? bills.map(bill => <button className="history-item" key={bill.id} onClick={() => loadBill(bill)}><span><b>{bill.totalKg} kg {bill.totalGrams} g</b><small>{bill.date}</small></span><span>{bill.entries.length} entries →</span></button>) : <p className="empty-state">No saved bills yet.</p>}</div></div>}
   </main>;
