@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Script, TextRecognition } from '@capacitor-mlkit/text-recognition';
 import { Camera, ImagePlus, Plus, Trash2, Pencil, Check, FileDown, MessageCircle, History, RefreshCw, X, Users, UserCheck, UserX, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { createWorker } from 'tesseract.js';
@@ -49,6 +51,19 @@ function extractWeightRows(ocrText: string): Entry[] {
   }
   return rows;
 }
+async function fileToBase64(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || '');
+      const base64 = value.includes(',') ? value.slice(value.indexOf(',') + 1) : '';
+      base64 ? resolve(base64) : reject(new Error('Could not prepare the photo for offline scanning.'));
+    };
+    reader.onerror = () => reject(new Error('Could not read the selected photo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function makeOcrImages(file: File): Promise<HTMLCanvasElement[]> {
   const bitmap = await createImageBitmap(file);
   // Keep a practical maximum dimension; crop selection happens before OCR.
@@ -321,56 +336,69 @@ export default function App() {
   async function scan(file?: File) {
     if (!file) return;
     setBusy(true); setOcrText(''); setPendingEntries([]); setOcrWords([]); setSelectedOcrWords([]);
-    setMessage('Preparing photo for English scanning...');
+    setMessage('Preparing smart photo scan...');
     try {
-      // Reuse the OCR worker between scans; create it only on the first scan.
-      if (!workerRef.current) workerRef.current = await createWorker('eng');
-      const worker = workerRef.current;
-      const images = await makeOcrImages(file);
       let bestText = '';
       let bestRows: Entry[] = [];
-      let bestScore = -1;
       let fullPageWords: OcrWord[] = [];
-      setOcrImageSize({ width: images[0].width, height: images[0].height });
-      for (let index = 0; index < images.length; index++) {
-        setMessage('Scanning the selected paper area...');
-        await worker.setParameters({
-          tessedit_pageseg_mode: (index === 0 ? '11' : '6') as any,
-          tessedit_char_whitelist: '0123456789,.',
-          preserve_interword_spaces: '1',
-          user_defined_dpi: '300'
+
+      if (Capacitor.isNativePlatform()) {
+        // Android/iOS: bundled Google ML Kit Latin model runs on-device without a cloud OCR request.
+        setMessage('Scanning on this device with Google ML Kit...');
+        const saved = await Filesystem.writeFile({
+          path: `nexora-smart-scan-${Date.now()}.jpg`,
+          data: await fileToBase64(file),
+          directory: Directory.Cache
         });
-        const result = await worker.recognize(images[index]);
-        const rows = extractWeightRows(result.data.text);
-        if (index === 0) {
-          const rawWords = (((result.data as any).words || []) as any[]).filter((word: any) => word.text?.trim()).map((word: any) => ({ text: String(word.text).trim(), x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 }));
-          // Native Android selection follows DOM order, not the absolute screen positions.
-          // Rebuild OCR word order geometrically so a drag cannot copy distant phantom words.
-          const lines: { center: number; height: number; words: OcrWord[] }[] = [];
-          for (const word of rawWords) {
-            const center = (word.y0 + word.y1) / 2;
-            const height = word.y1 - word.y0;
-            let line = lines.find(item => Math.abs(item.center - center) <= Math.max(8, Math.min(item.height, height) * 0.65));
-            if (!line) lines.push(line = { center, height, words: [] });
-            line.words.push(word);
+        const result = await TextRecognition.processImage({ path: saved.uri, script: Script.Latin });
+        bestText = result.text || '';
+        bestRows = extractWeightRows(bestText);
+        setOcrImageSize({ width: 1, height: 1 });
+      } else {
+        // Web/PWA fallback: keep the existing Tesseract flow and word-selection review.
+        if (!workerRef.current) workerRef.current = await createWorker('eng');
+        const worker = workerRef.current;
+        const images = await makeOcrImages(file);
+        let bestScore = -1;
+        setOcrImageSize({ width: images[0].width, height: images[0].height });
+        for (let index = 0; index < images.length; index++) {
+          setMessage('Enhancing and scanning the selected paper area...');
+          await worker.setParameters({
+            tessedit_pageseg_mode: (index === 0 ? '11' : '6') as any,
+            tessedit_char_whitelist: '0123456789,.',
+            preserve_interword_spaces: '1',
+            user_defined_dpi: '300'
+          });
+          const result = await worker.recognize(images[index]);
+          const rows = extractWeightRows(result.data.text);
+          if (index === 0) {
+            const rawWords = (((result.data as any).words || []) as any[]).filter((word: any) => word.text?.trim()).map((word: any) => ({ text: String(word.text).trim(), x0: word.bbox.x0, y0: word.bbox.y0, x1: word.bbox.x1, y1: word.bbox.y1 }));
+            const lines: { center: number; height: number; words: OcrWord[] }[] = [];
+            for (const word of rawWords) {
+              const center = (word.y0 + word.y1) / 2;
+              const height = word.y1 - word.y0;
+              let line = lines.find(item => Math.abs(item.center - center) <= Math.max(8, Math.min(item.height, height) * 0.65));
+              if (!line) lines.push(line = { center, height, words: [] });
+              line.words.push(word);
+            }
+            fullPageWords = lines.sort((a, b) => a.center - b.center).flatMap(line => line.words.sort((a, b) => a.x0 - b.x0));
           }
-          fullPageWords = lines.sort((a, b) => a.center - b.center).flatMap(line => line.words.sort((a, b) => a.x0 - b.x0));
-        }
-        const confidence = Number(result.data.confidence) || 0;
-        const score = rows.length * 100 + confidence;
-        if (score > bestScore) {
-          bestScore = score;
-          bestText = result.data.text;
-          bestRows = rows;
+          const confidence = Number(result.data.confidence) || 0;
+          const score = rows.length * 100 + confidence;
+          if (score > bestScore) {
+            bestScore = score;
+            bestText = result.data.text;
+            bestRows = rows;
+          }
         }
       }
       setOcrText(bestText);
       setOcrWords(fullPageWords);
       setPendingEntries(bestRows);
       setReviewPhoto(URL.createObjectURL(file));
-      setMessage(bestRows.length ? bestRows.length + ' possible weight rows found. Check the transcription and confirm.' : 'Page scanned. No clear weight rows found; check the full OCR text and add/correct entries.');
+      setMessage(bestRows.length ? bestRows.length + ' possible weight rows found. Check the transcription and confirm.' : 'Photo scanned. No clear weight rows found; check the detected text and add/correct entries.');
     } catch (error) {
-      setMessage('Scanning failed: ' + (error instanceof Error ? error.message : 'Check internet and try again.'));
+      setMessage('Smart scanning failed: ' + (error instanceof Error ? error.message : 'Please try another photo.'));
     } finally {
       setBusy(false);
     }
@@ -587,7 +615,7 @@ export default function App() {
       {profileEditing?<div className="profile-actions"><button className="secondary-action profile-cancel" onClick={()=>{setProfile(EMPTY_PROFILE);setProfileEditing(false);void supabase.from('user_profiles').select('full_name, phone, address, company_name, bank_holder_name, bank_name, account_number, ifsc_code').eq('user_id',authUser?.id).maybeSingle().then(({data})=>{if(data)setProfile({...EMPTY_PROFILE,...data});});}}>Cancel</button><button className="primary-action profile-save" onClick={()=>void saveProfile()}><Check/>Save Changes</button></div>:<button className="primary-action profile-save" onClick={()=>setProfileEditing(true)}><Pencil size={17}/>Edit Profile</button>}
     </section></div>}
     <section className="upload-card">
-      <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">ENGLISH OCR</span></div>
+      <div className="section-heading"><div><span className="step">01</span><h2>Choose a weight photo</h2></div><span className="offline-tag">SMART OCR</span></div>
       <div className="upload-actions">
         <button className="primary-action" onClick={() => cameraRef.current?.click()} disabled={busy}><Camera />Camera</button>
         <button className="secondary-action" onClick={() => galleryRef.current?.click()} disabled={busy}><ImagePlus />Gallery</button>
@@ -595,7 +623,7 @@ export default function App() {
       <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={choosePhoto} />
       <input ref={galleryRef} hidden type="file" accept="image/*" onChange={choosePhoto} />
       <p className="status-line">{busy && <RefreshCw className="spin" size={15} />} {message}</p>
-      <p className="hint">Example: 44,100 = 44 kg 100 g. The first scan needs internet to download English OCR data. Always check the detected entries before calculating.</p>
+      <p className="hint">Example: 44,100 = 44 kg 100 g. Android uses Google ML Kit on-device OCR; web scanning uses the existing Tesseract engine. Always check detected entries before calculating.</p>
     </section>
     <section className="entries-card">
       <div className="section-heading"><div><span className="step">02</span><h2>Review weight entries</h2></div><span className="count">{entries.length} entries</span></div>
