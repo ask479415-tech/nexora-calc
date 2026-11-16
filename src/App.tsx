@@ -419,7 +419,8 @@ export default function App() {
   async function pdf() {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const w = doc.internal.pageSize.getWidth(), m = 16, now = new Date(), tableW = w - 2 * m;
-    const billNo = 'GNX-' + String(now.getTime()).slice(-8);
+    const billNo = 'NXC-' + String(now.getTime()).slice(-8);
+    const registeredName = profile.full_name.trim() || authEmail || 'Registered Customer';
     doc.setFillColor(18, 42, 72); doc.rect(0, 0, w, 43, 'F');
     doc.setFillColor(35, 101, 162); doc.roundedRect(m, 9, 25, 25, 4, 4, 'F');
     doc.setDrawColor(225, 242, 255); doc.setLineWidth(1.2);
@@ -428,18 +429,24 @@ export default function App() {
     doc.line(m+2,27,m+8,27); doc.line(m+17,27,m+23,27);
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(19);
     doc.setFontSize(8); doc.text('POWERED BY NEXORA DIGITAL',m+32,9);
-    doc.setFontSize(19); doc.text('GLOBAL NEXUS',m+32,20);
+    doc.setFontSize(17); doc.text(doc.splitTextToSize(registeredName, tableW-90).slice(0,1),m+32,20);
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(198,216,235);
     doc.text('WEIGHT RECORD & BILL',m+32,28);
-    doc.setFontSize(8); doc.text('GLOBAL NEXUS • WEIGHT BILL',m+32,35);
+    doc.setFontSize(8); doc.text('CUSTOMER WEIGHT BILL',m+32,35);
     doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
     doc.text('INVOICE',w-m,15,{align:'right'});
     doc.setFont('helvetica','normal'); doc.setFontSize(8);
     doc.text('Bill No: '+billNo,w-m,23,{align:'right'});
     doc.text('Date: '+now.toLocaleDateString('en-IN'),w-m,30,{align:'right'});
-    let y=55; doc.setTextColor(35,53,73); doc.setFont('helvetica','bold'); doc.setFontSize(10);
-    doc.text('BILL TO',m,y); doc.setDrawColor(205,215,226); doc.setLineWidth(.35);
-    doc.line(m,y+2,w-m,y+2); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,105,121);
+    let y=52; doc.setTextColor(35,53,73); doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text('REGISTERED ACCOUNT',m,y); doc.setDrawColor(205,215,226); doc.setLineWidth(.35); doc.line(m,y+2,w-m,y+2);
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('Name:',m,y+12); doc.setFont('helvetica','normal'); doc.text(registeredName,m+18,y+12);
+    doc.setFont('helvetica','bold'); doc.text('Email:',m,y+21); doc.setFont('helvetica','normal'); doc.text(authEmail || '—',m+18,y+21);
+    doc.setFont('helvetica','bold'); doc.text('Phone:',m,y+30); doc.setFont('helvetica','normal'); doc.text(profile.phone || '—',m+18,y+30);
+    doc.setFont('helvetica','bold'); doc.text('Address:',m,y+39); doc.setFont('helvetica','normal');
+    const registrationAddress = doc.splitTextToSize(profile.address || '—', tableW-24).slice(0,2); doc.text(registrationAddress,m+20,y+39);
+    y += 43 + registrationAddress.length*4.5 + 8;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('BILL TO',m,y); doc.line(m,y+2,w-m,y+2); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,105,121);
     doc.setTextColor(35,53,73); doc.setFont('helvetica','bold');
     doc.text('Customer:',m,y+12); doc.setFont('helvetica','normal');
     doc.text(customer.name.trim() || 'Walk-in Customer',m+25,y+12);
@@ -480,18 +487,18 @@ export default function App() {
     y+=35;doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(90,105,121);
     doc.text('Rate per KG: '+money(numericRate),m+2,y);
     y+=18; doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(18,65,110);
-    doc.text('Global Nexus',w-m-24,y+3,{align:'center'});
+    doc.text(registeredName,w-m-24,y+3,{align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(105,119,135);
     doc.text('Authorised Signature',w-m-24,y+9,{align:'center'});
     doc.setDrawColor(225,231,238);doc.line(m,278,w-m,278);doc.setFontSize(8);doc.setTextColor(125,138,153);
     doc.text('Please verify all weight entries before accepting this bill.',w/2,285,{align:'center'});
-    doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text('GLOBAL NEXUS',w/2,291,{align:'center'});
+    doc.setFont('helvetica','bold');doc.setTextColor(18,65,110);doc.text(registeredName,w/2,291,{align:'center'});
     try {
-      const saved = await Filesystem.writeFile({ path: 'Global-Nexus-Weight-Bill.pdf', data: doc.output('datauristring').split(',')[1], directory: Directory.Cache });
-      await Share.share({ title: 'Global Nexus Weight Bill', text: 'Your weight bill from Global Nexus. Powered by Nexora Digital.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
+      const saved = await Filesystem.writeFile({ path: 'Nexora-Weight-Bill.pdf', data: doc.output('datauristring').split(',')[1], directory: Directory.Cache });
+      await Share.share({ title: registeredName + ' Weight Bill', text: 'Weight bill issued by ' + registeredName + '. Powered by Nexora Digital.', url: saved.uri, dialogTitle: 'Save or share PDF bill' });
       setMessage('PDF created. Choose WhatsApp, Drive or Save to Files from the Android share panel.');
     } catch (error) {
-      try { doc.save('Global-Nexus-Weight-Bill.pdf'); setMessage('PDF generated. Check your Downloads folder.'); }
+      try { doc.save('Nexora-Weight-Bill.pdf'); setMessage('PDF generated. Check your Downloads folder.'); }
       catch { setMessage('PDF could not be saved: ' + (error instanceof Error ? error.message : 'Please try again.')); }
     }
   }
@@ -608,11 +615,11 @@ export default function App() {
       <p className="hint">Change the rate anytime. Total amount updates automatically.</p>
     </section>
     <section className="bill-preview">
-      <div className="preview-top"><div><span className="eyebrow">POWERED BY NEXORA DIGITAL</span><h2>GLOBAL NEXUS</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
-      <div className="preview-customer"><strong>{customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p><p>Company: {profile.company_name||'—'}</p><p>Bank: {profile.bank_name||'—'} • Holder: {profile.bank_holder_name||'—'} • A/C: {profile.account_number||'—'} • IFSC: {profile.ifsc_code||'—'}</p></div>
+      <div className="preview-top"><div><span className="eyebrow">POWERED BY NEXORA DIGITAL</span><h2>{profile.full_name.trim() || authEmail || 'Registered Customer'}</h2><small>Weight Bill Preview</small></div><img src="./nexora-logo.svg" alt="Nexora logo" /></div>
+      <div className="preview-customer"><strong>Registered Account</strong><span>{profile.full_name.trim() || authEmail || 'Registered Customer'} • {authEmail || '—'}</span><span>{profile.phone || '—'}</span><p>{profile.address || '—'}</p><strong>Bill To: {customer.name.trim() || 'Customer Name'}</strong><span>{customer.phone.trim() || 'Phone number'}</span><p>{customer.address.trim()||'Customer address will appear here'}</p><p>Company: {profile.company_name||'—'}</p><p>Bank: {profile.bank_name||'—'} • Holder: {profile.bank_holder_name||'—'} • A/C: {profile.account_number||'—'} • IFSC: {profile.ifsc_code||'—'}</p></div>
       <div className="preview-rows">{entries.length ? entries.map((entry,index)=><div className="preview-row" key={entry.id}><span>{index+1}. {entry.kg} kg</span><strong>{String(entry.grams).padStart(3,'0')} g</strong></div>) : <p className="preview-empty">Weight entries will appear here</p>}</div>
       <div className="preview-summary"><div><span>Total Weight</span><strong>{sum.totalKg} kg {String(sum.totalGrams).padStart(3,'0')} g</strong></div><div><span>Total Amount</span><strong>{money(totalAmount)}</strong><small>Rate: {money(numericRate)} / KG</small></div></div>
-      <div className="preview-sign"><strong>Global Nexus</strong><small>Authorised Signature</small></div>
+      <div className="preview-sign"><strong>{profile.full_name.trim() || authEmail || 'Registered Customer'}</strong><small>Authorised Signature</small></div>
     </section>
     <section className="total-card"><div className="total-top"><span>Total Weight</span><span className="verified"><Check size={14} /> Verified entries</span></div><div className="total-value">{sum.totalKg}<small>kg</small> <i>{sum.totalGrams}</i><small>g</small></div><div className="total-caption">{entries.length} entries in total</div></section>
     <section className="bottom-actions"><button className="primary-action" onClick={saveBill} disabled={!entries.length}><Check />Save Bill</button><button className="secondary-action" onClick={pdf} disabled={!entries.length}><FileDown />PDF</button><button className="whatsapp-action" onClick={shareWhatsApp} disabled={!entries.length}><MessageCircle />WhatsApp</button></section>
