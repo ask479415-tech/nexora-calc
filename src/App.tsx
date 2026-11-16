@@ -443,7 +443,8 @@ export default function App() {
     doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('Company:',m,y+12); doc.setFont('helvetica','normal'); doc.text(doc.splitTextToSize(profile.company_name || registeredName, tableW-25).slice(0,1),m+22,y+12);
     doc.setFont('helvetica','bold'); doc.text('Owner:',m,y+21); doc.setFont('helvetica','normal'); doc.text(profile.full_name || '—',m+18,y+21);
     doc.setFont('helvetica','bold'); doc.text('Phone:',m,y+30); doc.setFont('helvetica','normal'); doc.text(profile.phone || '—',m+18,y+30);
-    doc.setFont('helvetica','bold'); doc.text('Email:',m,y+39); doc.setFont('helvetica','normal'); doc.text(authEmail || '—',m+18,y+39);\n    doc.setFont('helvetica','bold'); doc.text('Address:',m,y+48); doc.setFont('helvetica','normal');
+    doc.setFont('helvetica','bold'); doc.text('Email:',m,y+39); doc.setFont('helvetica','normal'); doc.text(authEmail || '—',m+18,y+39);
+    doc.setFont('helvetica','bold'); doc.text('Address:',m,y+48); doc.setFont('helvetica','normal');
     const registrationAddress = doc.splitTextToSize(profile.address || '—', tableW-24).slice(0,2); doc.text(registrationAddress,m+20,y+48);
     const businessBankDetails = [profile.bank_name ? 'Bank: '+profile.bank_name : '', profile.bank_holder_name ? 'Holder: '+profile.bank_holder_name : '', profile.account_number ? 'A/C: '+profile.account_number : '', profile.ifsc_code ? 'IFSC: '+profile.ifsc_code : ''].filter(Boolean).join(' | ');
     if (businessBankDetails) { doc.setFont('helvetica','bold'); doc.text('Bank:',m,y+60); doc.setFont('helvetica','normal'); doc.text(doc.splitTextToSize(businessBankDetails, tableW-22).slice(0,2),m+16,y+60); }
