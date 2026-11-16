@@ -18,7 +18,7 @@
     "@capacitor/filesystem": "^7.1.4",
     "@capacitor/share": "^7.0.2",
     "@supabase/supabase-js": "^2.57.0",
-    "@capacitor-mlkit/text-recognition": "7.0.0"
+    "@pantrist/capacitor-plugin-ml-kit-text-recognition": "7.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
