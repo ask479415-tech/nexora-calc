@@ -74,3 +74,12 @@
 .bill-preview>*{position:relative;z-index:1}
 
 .profile-actions{display:grid;grid-template-columns:.75fr 1.5fr;gap:10px;margin:13px 0 2px}.profile-actions .profile-save{margin:0}.profile-cancel{height:48px;border:0;border-radius:12px;font:700 12px Inter,Arial,sans-serif}.profile-modal input[readonly]:not([value]){cursor:default}
+
+/* Compact two-column bill recipient and business details */
+.preview-parties{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:11px 0 13px;border-bottom:1px solid #e8eef5}
+.preview-party{min-width:0;color:#526b84;font-size:9px;line-height:1.55;overflow-wrap:anywhere}
+.preview-party+ .preview-party{border-left:1px solid #e8eef5;padding-left:12px}
+.preview-party>strong{display:block;color:#1d3857;font-size:10px;letter-spacing:.35px;margin-bottom:5px}
+.preview-party>span{display:block;margin:2px 0}
+.preview-party b{color:#526b84;font-weight:700}
+@media(max-width:360px){.preview-parties{gap:8px}.preview-party{font-size:8px}.preview-party+ .preview-party{padding-left:8px}}
