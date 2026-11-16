@@ -17,19 +17,6 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-      - name: Check permanent signing secrets
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "::error::Add all four permanent Android signing secrets in Settings > Secrets and variables > Actions before building APKs."
-            exit 1
-          fi
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nexora-calc-release.jks"
-          keytool -list -keystore "$RUNNER_TEMP/nexora-calc-release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
       - run: npm install
       - name: Generate Android project
         run: npx cap add android
@@ -37,12 +24,9 @@ jobs:
         run: |
           python -m pip install --quiet Pillow
           python scripts/generate-android-icons.py
-      - name: Build and sign Customer APK
+      - name: Build Customer APK
         env:
           VITE_APP_ROLE: customer
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           npm run build
           npx cap sync android
@@ -50,8 +34,7 @@ jobs:
           chmod +x gradlew
           ./gradlew clean assembleDebug
           mkdir -p ../release
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks "$RUNNER_TEMP/nexora-calc-release.jks" --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD --out ../release/Nexora-Calc-Customer.apk app/build/outputs/apk/debug/app-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose ../release/Nexora-Calc-Customer.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../release/Nexora-Calc-Customer.apk
       - name: Configure Admin application identity
         run: |
           sed -i "s/com.nexora.calc/com.nexora.calc.admin/" capacitor.config.ts
@@ -61,20 +44,16 @@ jobs:
           rm -rf android
           npx cap add android
           python scripts/generate-android-icons.py
-      - name: Build and sign Admin APK
+      - name: Build Admin APK
         env:
           VITE_APP_ROLE: admin
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           npm run build
           npx cap sync android
           cd android
           chmod +x gradlew
           ./gradlew clean assembleDebug
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks "$RUNNER_TEMP/nexora-calc-release.jks" --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD --out ../release/Nexora-Calc-Admin.apk app/build/outputs/apk/debug/app-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose ../release/Nexora-Calc-Admin.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../release/Nexora-Calc-Admin.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Nexora-Calc-Customer-and-Admin-APKs
